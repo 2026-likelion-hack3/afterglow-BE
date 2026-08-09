@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # 로컬 개발 환경과 맞춘 고정 메이저 버전(18). 운영 RDS 버전이 정해지면 함께 맞춘다.
+        image: postgres:18
+        env:
+          # CI 전용 계정/DB. 운영 RDS 정보나 실제 비밀값이 아니다.
+          POSTGRES_DB: afterglow
+          POSTGRES_USER: ci_user
+          POSTGRES_PASSWORD: ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_user -d afterglow"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # application-local.yml이 localhost:5432/afterglow을 고정 사용하므로 local 프로파일을 그대로 재사용한다.
+      SPRING_PROFILES_ACTIVE: local
+      DB_USERNAME: ci_user
+      DB_PASSWORD: ci_password
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build and test
+        run: ./gradlew clean build

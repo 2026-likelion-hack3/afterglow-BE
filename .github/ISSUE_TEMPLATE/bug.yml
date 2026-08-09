@@ -1,0 +1,55 @@
+name: "[BUG] 버그 리포트"
+description: 예상과 다르게 동작하는 문제를 보고한다
+title: "[BUG] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: 버그 설명
+      description: 어떤 문제가 발생하는지 간결하게 설명한다.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 절차
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대 결과
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 결과
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 실행 환경
+      description: OS, Java 버전, 프로파일(local/prod), 브랜치/커밋 등.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 로그 또는 이미지
+      description: 스택 트레이스, 스크린샷 등. 민감정보(개인정보, 비밀값)는 반드시 가려서 첨부한다.
+    validations:
+      required: false
+  - type: textarea
+    id: impact
+    attributes:
+      label: 영향 범위
+      description: 어떤 도메인/기능/사용자에게 영향을 주는지.
+    validations:
+      required: true

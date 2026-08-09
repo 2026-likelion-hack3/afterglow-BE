@@ -1,0 +1,35 @@
+name: "[REFACTOR] 리팩터링"
+description: 동작 변경 없이 구조/코드 품질을 개선한다
+title: "[REFACTOR] "
+labels: ["refactor"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: 리팩터링 대상과 이유
+      description: 어떤 코드/구조를 왜 바꾸는지 설명한다.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 영향 범위
+      description: 영향을 받는 패키지/클래스, 동작 변경이 없음을 어떻게 보장할지.
+    validations:
+      required: true
+  - type: textarea
+    id: tasks
+    attributes:
+      label: 상세 작업 목록
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: 검증 방법
+      description: 기존 테스트 통과, 추가 테스트 등.
+    validations:
+      required: true
