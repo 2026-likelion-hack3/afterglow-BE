@@ -1,0 +1,27 @@
+name: "[CHORE] 잡무성 작업"
+description: 빌드, 설정, 문서, 의존성 등 기능과 무관한 작업
+title: "[CHORE] "
+labels: ["chore"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: 작업 설명
+    validations:
+      required: true
+  - type: textarea
+    id: tasks
+    attributes:
+      label: 상세 작업 목록
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: 참고 사항
+      description: 다른 작업에 미치는 영향, 후속 조치 필요 여부 등.
+    validations:
+      required: false

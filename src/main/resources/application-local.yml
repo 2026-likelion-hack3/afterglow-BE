@@ -1,0 +1,13 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/afterglow
+    username: ${DB_USERNAME:afterglow}
+    password: ${DB_PASSWORD:afterglow}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+logging:
+  level:
+    com.afterglow: debug
