@@ -11,4 +11,6 @@ public interface AccountRepository {
 	Optional<Account> findByEmailAndEmailVerifiedAtIsNotNull(String email);
 
 	boolean existsByEmailAndEmailVerifiedAtIsNotNull(String email);
+
+	void delete(Account account);
 }

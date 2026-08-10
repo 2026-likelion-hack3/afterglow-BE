@@ -72,6 +72,15 @@ public class AccountService {
 		return jwtTokenProvider.createToken(account.getId());
 	}
 
+	/**
+	 * 계정만 삭제한다. 다른 도메인이 실제로 accountId를 참조하는 데이터를 쌓기 시작하면
+	 * 그 시점에 연관 데이터 정리 방식(이벤트 기반 정리 등)을 다시 정한다 — 아직은 참조하는 데이터가 없다.
+	 */
+	public void deleteAccount(Long accountId) {
+		Account account = getAccount(accountId);
+		accountRepository.delete(account);
+	}
+
 	private Account getAccount(Long accountId) {
 		return accountRepository.findById(accountId)
 				.orElseThrow(() -> new NotFoundException("계정을 찾을 수 없습니다."));

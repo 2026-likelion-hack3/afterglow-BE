@@ -2,6 +2,7 @@ package com.afterglow.account.api;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -49,5 +50,11 @@ public class AccountController {
 	public ResponseEntity<TokenResponse> verifyLogin(@Valid @RequestBody EmailVerifyRequest request) {
 		String token = accountService.verifyLoginCode(request.email(), request.code());
 		return ResponseEntity.ok(new TokenResponse(token));
+	}
+
+	@DeleteMapping("/me")
+	public ResponseEntity<Void> deleteAccount(@AuthenticationPrincipal Long accountId) {
+		accountService.deleteAccount(accountId);
+		return ResponseEntity.noContent().build();
 	}
 }
