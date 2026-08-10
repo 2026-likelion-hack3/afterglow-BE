@@ -46,7 +46,6 @@ chore: 프로젝트 공통 설정 추가
 2. 이슈 번호로 브랜치를 만들어 작업한다.
 3. 로컬에서 `gradlew.bat clean build` (Windows) 또는 `./gradlew clean build` (macOS/Linux)로 빌드와 테스트를 통과시킨다.
 4. PR을 생성하고 [PR 템플릿](.github/PULL_REQUEST_TEMPLATE.md)의 체크리스트를 채운다. 관련 이슈를 반드시 연결한다.
-5. 리뷰어 승인 후 병합한다.
 
 ## 코드 스타일 요약
 
