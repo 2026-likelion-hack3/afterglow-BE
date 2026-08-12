@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ses.SesClient;
 
@@ -19,6 +20,7 @@ public class SesClientConfig {
 		return SesClient.builder()
 				.region(Region.of(region))
 				.credentialsProvider(DefaultCredentialsProvider.builder().build())
+				.httpClientBuilder(UrlConnectionHttpClient.builder())
 				.build();
 	}
 }

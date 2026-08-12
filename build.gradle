@@ -38,7 +38,10 @@ dependencies {
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
-	implementation 'software.amazon.awssdk:ses'
+	implementation('software.amazon.awssdk:ses') {
+		exclude group: 'software.amazon.awssdk', module: 'apache5-client'
+	}
+	implementation 'software.amazon.awssdk:url-connection-client'
 
 	runtimeOnly 'org.postgresql:postgresql'
 
