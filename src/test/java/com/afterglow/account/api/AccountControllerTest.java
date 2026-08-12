@@ -1,5 +1,6 @@
 package com.afterglow.account.api;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -116,6 +117,33 @@ class AccountControllerTest {
 	@Test
 	void 등록되지_않은_이메일로_로그인_코드를_요청하면_404를_받는다() throws Exception {
 		mockMvc.perform(post("/api/accounts/login/verification-codes")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(new EmailRequest(uniqueEmail()))))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void 계정을_삭제하면_204를_받는다() throws Exception {
+		String token = createAnonymousAccountToken();
+
+		mockMvc.perform(delete("/api/accounts/me").header("Authorization", "Bearer " + token))
+				.andExpect(status().isNoContent());
+	}
+
+	@Test
+	void 인증_없이_계정_삭제를_시도하면_401을_받는다() throws Exception {
+		mockMvc.perform(delete("/api/accounts/me"))
+				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void 삭제된_계정의_토큰으로_이후_요청을_하면_404를_받는다() throws Exception {
+		String token = createAnonymousAccountToken();
+		mockMvc.perform(delete("/api/accounts/me").header("Authorization", "Bearer " + token))
+				.andExpect(status().isNoContent());
+
+		mockMvc.perform(post("/api/accounts/me/email/verification-codes")
+						.header("Authorization", "Bearer " + token)
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(objectMapper.writeValueAsString(new EmailRequest(uniqueEmail()))))
 				.andExpect(status().isNotFound());

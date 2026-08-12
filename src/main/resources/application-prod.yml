@@ -11,3 +11,9 @@ spring:
 logging:
   level:
     com.afterglow: info
+
+afterglow:
+  aws:
+    region: ${AWS_REGION}
+    ses:
+      sender-email: ${SES_SENDER_EMAIL}
