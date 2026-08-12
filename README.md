@@ -8,7 +8,8 @@
 - Spring Boot 3.3.4 (Web, Data JPA, Validation, Actuator)
 - Gradle 8.10 (Wrapper 포함, 별도 설치 불필요)
 - PostgreSQL (JDBC 드라이버만 포함, 서버 별도 준비 필요 — 메이저 버전은 팀에서 사용 중인 로컬/CI 기준 **18**)
-- 향후 도입 예정: AWS SDK v2(S3/SES, 사진 임시 저장·이메일 매직링크 발송용 — 현재 코드/의존성에는 없음), Docker(로컬 PostgreSQL 외 앱 컨테이너화), AWS EC2/RDS 배포
+- AWS SDK v2 — SES(이메일 인증코드 발송) 연동 완료. S3(사진 임시 저장)는 아직 미도입
+- 향후 도입 예정: Docker(로컬 PostgreSQL 외 앱 컨테이너화), AWS EC2/RDS 배포
 
 ## 요구 Java 버전
 
@@ -60,6 +61,8 @@ CREATE DATABASE afterglow OWNER afterglow;
 | `DB_USERNAME`, `DB_PASSWORD` | local 프로파일 DB 접속 계정 | 미지정 시 기본값 `afterglow`/`afterglow` |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | prod 프로파일 DB 접속 정보 | **prod에서는 필수**, 실제 값은 배포 환경변수로만 주입 |
 | `SPRING_PROFILES_ACTIVE` | 활성 프로파일 | prod 배포 시 `prod`로 반드시 지정 |
+| `JWT_SECRET`, `JWT_EXPIRATION_SECONDS` | JWT 서명 키·만료 시간 | local은 기본값 사용 가능, prod는 반드시 배포 환경변수로 지정 |
+| `AWS_REGION`, `SES_SENDER_EMAIL` | prod 프로파일에서 SES 이메일 발송 설정 | **prod에서는 필수**. AWS 자격증명 자체는 EC2 IAM role의 기본 자격증명 체인을 사용하므로 별도 키는 필요 없음 |
 
 ## local 프로파일 실행 방법
 
@@ -113,7 +116,7 @@ gradlew.bat test
 
 ## 배포 (prod 프로파일)
 
-`SPRING_PROFILES_ACTIVE=prod`와 함께 `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`를 환경변수로 주입한다. **prod 프로파일은 소스에서 기본값으로 지정하지 않으며, 반드시 외부 환경변수로 명시해야 활성화된다.** (향후 도입 예정) AWS 연동(S3/SES)이 추가되면 EC2 인스턴스 IAM role의 기본 자격증명 체인을 사용하고 별도 키를 설정 파일에 넣지 않을 예정이다 — 현재는 AWS SDK 의존성 자체가 없다.
+`SPRING_PROFILES_ACTIVE=prod`와 함께 `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `AWS_REGION`, `SES_SENDER_EMAIL`을 환경변수로 주입한다. **prod 프로파일은 소스에서 기본값으로 지정하지 않으며, 반드시 외부 환경변수로 명시해야 활성화된다.** AWS(SES) 연동은 EC2 인스턴스 IAM role의 기본 자격증명 체인을 사용하며, 별도 Access Key/Secret Key를 설정 파일이나 환경변수에 넣지 않는다.
 
 ## 패키지 구조
 
