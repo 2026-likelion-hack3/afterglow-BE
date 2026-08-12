@@ -9,7 +9,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.afterglow.account.application.AccountService;
+import com.afterglow.common.security.OpenApiConfig;
 
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -26,6 +28,7 @@ public class AccountController {
 		return ResponseEntity.ok(new TokenResponse(token));
 	}
 
+	@SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 	@PostMapping("/me/email/verification-codes")
 	public ResponseEntity<Void> requestSignupVerificationCode(
 			@AuthenticationPrincipal Long accountId, @Valid @RequestBody EmailRequest request) {
@@ -33,6 +36,7 @@ public class AccountController {
 		return ResponseEntity.noContent().build();
 	}
 
+	@SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 	@PostMapping("/me/email/verification")
 	public ResponseEntity<TokenResponse> verifySignup(
 			@AuthenticationPrincipal Long accountId, @Valid @RequestBody EmailVerifyRequest request) {
@@ -52,6 +56,7 @@ public class AccountController {
 		return ResponseEntity.ok(new TokenResponse(token));
 	}
 
+	@SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 	@DeleteMapping("/me")
 	public ResponseEntity<Void> deleteAccount(@AuthenticationPrincipal Long accountId) {
 		accountService.deleteAccount(accountId);
