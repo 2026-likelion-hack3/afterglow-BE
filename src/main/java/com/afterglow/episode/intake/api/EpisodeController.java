@@ -8,16 +8,19 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.afterglow.common.security.OpenApiConfig;
 import com.afterglow.episode.intake.application.EpisodeService;
 import com.afterglow.episode.intake.domain.Intake;
 import com.afterglow.episode.intake.domain.Symptom;
 
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/episodes")
 @RequiredArgsConstructor
+@SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class EpisodeController {
 
 	private final EpisodeService episodeService;
