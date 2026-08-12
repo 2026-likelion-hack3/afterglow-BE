@@ -1,6 +1,6 @@
 # Afterglow Backend
 
-잠과 피부 — 갱년기 여성 스킨케어 루틴 앱 백엔드. 기능명세서: `잠과 피부 — 갱년기 여성 스킨케어 루틴 앱_기능명세서_2026-08-09.md`
+잠과 피부 — 갱년기 여성 스킨케어 루틴 앱 백엔드. 기능명세서: `잠과 피부 — 갱년기 여성 스킨케어 루틴 앱_기능명세서_2026-08-12.md`
 
 ## 기술 스택
 
@@ -128,17 +128,6 @@ gradlew.bat test
 - `account` — 계정·데이터 관리(9장)
 - `story` — 커뮤니티(10장)
 - `common` — 베이스 엔티티, 공통 예외 처리, JPA Auditing 설정
-
-## 아직 구현되지 않은 기능
-
-- `vanity`를 포함한 모든 도메인의 Repository/Service/Controller
-- `vanity` 외 나머지 도메인의 엔티티
-- 실제 분석 엔진(episode.analysis)
-- 인증/인가, JWT, Spring Security, 이메일 로그인
-- AWS SDK(S3/SES) 연동 — 사진 임시 저장, 이메일 매직링크 발송 (의존성 미포함, 향후 도입 예정)
-- AWS 배포 자동화, GitHub Actions CD, Docker 이미지 빌드/배포(Dockerfile 없음 — 로컬 PostgreSQL용 Docker Compose만 존재)
-- Flyway 등 DB 마이그레이션 도구
-- 커뮤니티(story) 기능, 이미지 분석
 
 ## GitHub Issue 및 PR 작업 흐름
 
