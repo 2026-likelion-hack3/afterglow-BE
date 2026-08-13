@@ -17,3 +17,17 @@
 - 인증된 사용자 식별은 항상 `@AuthenticationPrincipal Long accountId` — body/query/header로 따로 받지 않는다.
 - 작업 완료 전 항상 clean build.
 - `dev`가 integration branch, `main`은 release/production branch.
+
+## 외부 지식 소스
+
+- 기능/비즈니스 요구사항 → Manyfast
+- UI/화면 흐름/디자인 → Figma
+- 기술 아키텍처/코딩 컨벤션 → repository docs/
+- 팀 결정사항/회의 내용 → Notion
+
+여러 source가 충돌하면 임의로 해석하지 않고 충돌 내용을 먼저 사용자에게 보고한다.
+
+## 외부 서비스 쓰기 제한
+
+- 사용자가 명시적으로 요청하지 않는 한 Notion 콘텐츠를 수정하지 않는다.
+- 사용자가 명시적으로 요청하지 않는 한 Figma 콘텐츠를 수정하지 않는다.

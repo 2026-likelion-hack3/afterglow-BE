@@ -148,3 +148,13 @@ gradlew.bat bootRun
 - 접속 정보(호스트/포트/DB명/계정/비밀번호)가 `application-local.yml`의 기본값 또는 설정한 환경변수와 일치하는지 확인한다.
 - `.env`의 `POSTGRES_PORT`를 5432가 아닌 값으로 바꿨다면, 애플리케이션 접속 URL(`application-local.yml`)의 포트도 함께 맞춰야 한다(기본 설정은 5432 고정이므로 포트를 바꿨다면 `DB_URL` 등으로 별도 오버라이드가 필요하다).
 - 방화벽 또는 다른 프로세스가 5432 포트를 점유하고 있지 않은지 확인한다.
+
+## 9. Claude Code MCP 설정
+
+저장소 루트의 `.mcp.json`에 Manyfast(기획 소스), Notion(팀 결정사항) MCP 서버가 project scope로 정의되어 있다.
+
+- Manyfast를 쓰려면 `MANYFAST_API_KEY`가 **Claude Code를 실행하는 OS/셸 환경변수**로 설정되어 있어야 한다. `.mcp.json`은 `${MANYFAST_API_KEY}` 형태로 이 값을 참조한다.
+- 이 환경변수는 Spring 애플리케이션이 쓰는 `.env` 파일과는 **서로 다른 메커니즘**이다. `.env`에 적어도 자동으로 읽히지 않는다 — 셸 프로파일이나 시스템 환경변수로 직접 설정해야 한다.
+- 실제 API Key 값은 어떤 문서에도, 저장소 어디에도 기록하지 않는다.
+- Notion은 OAuth 방식이라 별도 환경변수가 필요 없다. `.mcp.json`이 저장소에 있어도, 실제 사용을 위해서는 각자 Claude Code에서 `/mcp` 명령으로 자신의 계정으로 로그인해야 한다.
+- Figma는 `.mcp.json`에 없다 — 공식 Claude Code plugin(`claude plugin install figma@claude-plugins-official`)을 각자 설치하고 OAuth 로그인하는 방식으로 쓴다.
