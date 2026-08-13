@@ -2,10 +2,7 @@
   "mcpServers": {
     "manyfast": {
       "type": "http",
-      "url": "https://api.manyfast.io/mcp",
-      "headers": {
-        "Authorization": "Bearer ${MANYFAST_API_KEY}"
-      }
+      "url": "https://api.manyfast.io/mcp"
     },
     "notion": {
       "type": "http",

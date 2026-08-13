@@ -151,10 +151,17 @@ gradlew.bat bootRun
 
 ## 9. Claude Code MCP 설정
 
-저장소 루트의 `.mcp.json`에 Manyfast(기획 소스), Notion(팀 결정사항) MCP 서버가 project scope로 정의되어 있다.
+저장소 루트의 `.mcp.json`에 Manyfast(기획 소스), Notion(팀 결정사항) MCP 서버가 project scope로 정의되어 있다. 둘 다 OAuth/로그인 방식이라 API Key나 환경변수 설정이 필요 없다.
 
-- Manyfast를 쓰려면 `MANYFAST_API_KEY`가 **Claude Code를 실행하는 OS/셸 환경변수**로 설정되어 있어야 한다. `.mcp.json`은 `${MANYFAST_API_KEY}` 형태로 이 값을 참조한다.
-- 이 환경변수는 Spring 애플리케이션이 쓰는 `.env` 파일과는 **서로 다른 메커니즘**이다. `.env`에 적어도 자동으로 읽히지 않는다 — 셸 프로파일이나 시스템 환경변수로 직접 설정해야 한다.
-- 실제 API Key 값은 어떤 문서에도, 저장소 어디에도 기록하지 않는다.
-- Notion은 OAuth 방식이라 별도 환경변수가 필요 없다. `.mcp.json`이 저장소에 있어도, 실제 사용을 위해서는 각자 Claude Code에서 `/mcp` 명령으로 자신의 계정으로 로그인해야 한다.
+Manyfast 연결:
+1. Claude Code를 실행한다.
+2. `/mcp` 명령을 입력한다.
+3. `manyfast`를 선택한다.
+4. `Authenticate`를 선택한다.
+5. Manyfast 계정으로 로그인한다.
+6. 연결할 그룹을 선택한다.
+
+Notion도 같은 방식으로 `/mcp`에서 `notion`을 선택해 로그인한다.
+
+인증 정보는 저장소에 저장되지 않으며, 각 개발자가 개별적으로 로그인한다.
 - Figma는 `.mcp.json`에 없다 — 공식 Claude Code plugin(`claude plugin install figma@claude-plugins-official`)을 각자 설치하고 OAuth 로그인하는 방식으로 쓴다.
