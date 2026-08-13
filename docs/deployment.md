@@ -21,11 +21,31 @@
 
 AWS(SES) 연동은 EC2 인스턴스 IAM role의 기본 자격증명 체인을 사용하며, 별도 Access Key/Secret Key를 설정 파일이나 환경변수에 넣지 않는다.
 
+## Docker 이미지 빌드
+
+애플리케이션 컨테이너화는 `Dockerfile`(multi-stage build)로 구성되어 있다.
+
+1. Gradle build stage(`eclipse-temurin:21-jdk-jammy`)에서 `./gradlew clean bootJar -x test`로 실행 가능한 jar를 만든다. 테스트는 실제 PostgreSQL에 의존(`@SpringBootTest`)해 이 단계에서 DB에 접근할 수 없으므로 여기서는 실행하지 않는다 — 테스트 검증은 CI의 Gradle 단계(아래 참고)가 전담한다.
+2. 최소 runtime stage(`eclipse-temurin:21-jre-jammy`)로 jar만 복사해 non-root 사용자(`spring`)로 실행한다.
+3. Spring profile, DB 접속 정보, JWT/AWS 설정 등은 이미지에 baking하지 않고 컨테이너 실행 시 환경변수로 주입한다.
+
+로컬 빌드/실행:
+```
+docker build -t afterglow-be:local .
+docker run --rm -p 8080:8080 \
+  -e SPRING_PROFILES_ACTIVE=local \
+  -e SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/afterglow \
+  -e DB_USERNAME=afterglow \
+  -e DB_PASSWORD=afterglow \
+  afterglow-be:local
+```
+`docker-compose.yml`로 띄운 PostgreSQL은 호스트 포트로 노출되어 있으므로, 애플리케이션 컨테이너에서는 `--network host` 대신 Docker Desktop이 제공하는 `host.docker.internal`로 접근한다. `application-local.yml`은 `localhost:5432`를 고정 사용하므로 `SPRING_DATASOURCE_URL` 환경변수로 접속 URL을 덮어쓴다.
+
 ## 현재 상태
 
-- Dockerfile 없음 — 로컬 PostgreSQL 실행용 `docker-compose.yml`만 존재, 애플리케이션 컨테이너화는 아직 하지 않았다.
-- 실제 배포 자동화 파이프라인 없음 — 현재 GitHub Actions는 PR에서 `./gradlew clean build`(빌드+테스트) 실행까지만 한다.
-- 실제 AWS EC2/RDS에 배포된 적은 아직 없다(로컬 환경에서 prod 프로파일 + 실제 AWS SES로 수동 검증만 완료된 상태).
+- **Docker image 빌드까지 구현됨.** 다만 이미지를 registry(GHCR 등)에 push하는 단계와 CD(자동 배포)는 아직 없다.
+- CI(GitHub Actions)는 `dev`/`main` 대상 PR에서 (1) Gradle build/test, (2) Docker image build(push 없이 빌드 검증만)까지 실행한다. 이미지를 실제 PostgreSQL과 함께 띄워보는 integration/smoke test는 아직 없다.
+- 실제 AWS EC2/RDS에 배포된 적은 아직 없다(로컬 환경에서 prod 프로파일 + 실제 AWS SES로 수동 검증만 완료된 상태). RDS/EC2 프로비저닝과 GHCR push, CD 파이프라인은 이후 별도 작업으로 진행한다.
 
 ## 민감정보 관리
 

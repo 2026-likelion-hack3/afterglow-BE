@@ -9,7 +9,7 @@
 - Gradle 8.10 (Wrapper 포함, 별도 설치 불필요)
 - PostgreSQL (JDBC 드라이버만 포함, 서버 별도 준비 필요 — 메이저 버전은 팀에서 사용 중인 로컬/CI 기준 **18**)
 - AWS SDK v2 — SES(이메일 인증코드 발송) 연동 완료. S3(사진 임시 저장)는 아직 미도입
-- 향후 도입 예정: Docker(로컬 PostgreSQL 외 앱 컨테이너화), AWS EC2/RDS 배포
+- Docker — 애플리케이션 컨테이너화(multi-stage `Dockerfile`)와 PR CI에서의 이미지 빌드 검증 완료. Registry push(GHCR)와 CD, AWS EC2/RDS 배포는 아직 미도입 — 자세한 내용은 [docs/deployment.md](docs/deployment.md) 참고
 
 ## 요구 Java 버전
 
@@ -25,7 +25,7 @@ Java 21. `java -version`으로 확인한다.
 
 ### Docker Compose 사용 (권장)
 
-저장소 루트의 `docker-compose.yml`은 PostgreSQL 컨테이너만 정의한다(애플리케이션 컨테이너/Dockerfile 없음).
+저장소 루트의 `docker-compose.yml`은 PostgreSQL 컨테이너만 정의한다. 애플리케이션 컨테이너화는 별도의 `Dockerfile`로 구성되어 있다(빌드/실행 방법은 [docs/deployment.md](docs/deployment.md#docker-이미지-빌드) 참고).
 
 ```
 cp .env.example .env        # Windows는 copy .env.example .env
