@@ -49,20 +49,11 @@ CREATE USER afterglow WITH PASSWORD 'afterglow';
 CREATE DATABASE afterglow OWNER afterglow;
 ```
 
-자세한 절차와 트러블슈팅은 [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md)를 참고한다.
+자세한 절차와 트러블슈팅은 [docs/local-setup.md](docs/local-setup.md)를 참고한다.
 
 ## 환경변수 목록
 
-`.env.example`을 복사해 `.env`로 사용한다(`.env`는 git에 커밋하지 않는다).
-
-| 변수 | 용도 | 비고 |
-|---|---|---|
-| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT` | docker-compose.yml의 로컬 PostgreSQL 설정 | 기본값 `afterglow`/`afterglow`/`afterglow`/`5432` |
-| `DB_USERNAME`, `DB_PASSWORD` | local 프로파일 DB 접속 계정 | 미지정 시 기본값 `afterglow`/`afterglow` |
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | prod 프로파일 DB 접속 정보 | **prod에서는 필수**, 실제 값은 배포 환경변수로만 주입 |
-| `SPRING_PROFILES_ACTIVE` | 활성 프로파일 | prod 배포 시 `prod`로 반드시 지정 |
-| `JWT_SECRET`, `JWT_EXPIRATION_SECONDS` | JWT 서명 키·만료 시간 | local은 기본값 사용 가능, prod는 반드시 배포 환경변수로 지정 |
-| `AWS_REGION`, `SES_SENDER_EMAIL` | prod 프로파일에서 SES 이메일 발송 설정 | **prod에서는 필수**. AWS 자격증명 자체는 EC2 IAM role의 기본 자격증명 체인을 사용하므로 별도 키는 필요 없음 |
+`.env.example`을 복사해 `.env`로 사용한다(`.env`는 git에 커밋하지 않는다). 전체 환경변수 목록과 prod 배포 관련 내용은 [docs/deployment.md](docs/deployment.md)를 참고한다.
 
 ## local 프로파일 실행 방법
 
@@ -116,26 +107,26 @@ gradlew.bat test
 
 ## 배포 (prod 프로파일)
 
-`SPRING_PROFILES_ACTIVE=prod`와 함께 `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `AWS_REGION`, `SES_SENDER_EMAIL`을 환경변수로 주입한다. **prod 프로파일은 소스에서 기본값으로 지정하지 않으며, 반드시 외부 환경변수로 명시해야 활성화된다.** AWS(SES) 연동은 EC2 인스턴스 IAM role의 기본 자격증명 체인을 사용하며, 별도 Access Key/Secret Key를 설정 파일이나 환경변수에 넣지 않는다.
+자세한 내용은 [docs/deployment.md](docs/deployment.md) 참고.
 
 ## 패키지 구조
 
-기능명세서의 장(章) 구성을 그대로 따른다. 각 패키지의 관계와 설계 배경은 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)에 정리되어 있다.
+`com.afterglow.domain.{업무}` 아래에 기능명세서의 장(章) 구성을 따라 도메인별 패키지를 둔다. 공유 코드는 `com.afterglow.global`에 둔다. 각 패키지의 관계와 설계 배경은 [docs/architecture.md](docs/architecture.md)에, 도메인별 구현 상태와 설계 결정은 [docs/domains/](docs/domains/)에 정리되어 있다.
 
-- `onboarding` — 온보딩(1장)
-- `episode` — 증상 접수부터 3일차 판정까지(2~4장): `intake`, `analysis`, `card`, `routine`, `checkin`
-- `vanity` — 화장대(5장) — 현재 `Product`, `CombinationRule` 엔티티와 관련 enum만 존재
-- `tracking` — 일상 기록·주간 리포트(6장)
-- `trust` — 상업적 중립성·금지 용어·사진 처리 정책(7장)
-- `notification` — 알림(8장)
-- `account` — 계정·데이터 관리(9장)
-- `story` — 커뮤니티(10장)
-- `common` — 베이스 엔티티, 공통 예외 처리, JPA Auditing 설정
+- `domain.onboarding` — 온보딩(1장)
+- `domain.episode` — 증상 접수부터 3일차 판정까지(2~4장): `intake`, `analysis`, `card`, `routine`, `checkin`
+- `domain.vanity` — 화장대(5장) — 현재 `Product`, `CombinationRule` 엔티티와 관련 enum만 존재
+- `domain.tracking` — 일상 기록·주간 리포트(6장)
+- `domain.trust` — 상업적 중립성·금지 용어·사진 처리 정책(7장)
+- `domain.notification` — 알림(8장)
+- `domain.account` — 계정·데이터 관리(9장)
+- `domain.story` — 커뮤니티(10장)
+- `global` — 베이스 엔티티, 공통 예외 처리, 보안 설정
 
 ## GitHub Issue 및 PR 작업 흐름
 
 1. 작업 전 Issue를 생성한다. 템플릿은 `.github/ISSUE_TEMPLATE/`(feature/bug/refactor/chore)을 사용하며, 제목에 `[FEAT]`, `[BUG]`, `[REFACTOR]`, `[CHORE]` 접두사를 붙인다.
-2. 이슈 번호를 포함한 브랜치를 만든다: `feat/{issue-number}-{short-description}` 등. 자세한 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md) 참고.
+2. `dev`에서 이슈 번호를 포함한 브랜치를 만든다: `feat/{issue-number}-{short-description}` 등. 자세한 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md) 참고.
 3. 커밋은 [Conventional Commits](https://www.conventionalcommits.org/)(`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`, `build:`, `ci:`)를 따른다.
 4. PR 생성 시 [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) 체크리스트를 채우고 관련 Issue를 연결한다.
 5. PR을 열면 CI(`./gradlew clean build`)가 자동 실행된다.
@@ -148,7 +139,13 @@ gradlew.bat test
 
 ## 더 읽어보기
 
+- [CLAUDE.md](CLAUDE.md) — 문서 라우터, 항상 지킬 원칙
 - [CONTRIBUTING.md](CONTRIBUTING.md) — 브랜치/커밋/PR 규칙
-- [docs/CONVENTIONS.md](docs/CONVENTIONS.md) — 코드 컨벤션
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 아키텍처, 데이터 저장 경계, 얼굴 사진 처리 원칙
-- [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md) — 로컬 개발 환경 설정, 트러블슈팅
+- [docs/architecture.md](docs/architecture.md) — 아키텍처, 데이터 저장 경계, 얼굴 사진 처리 원칙
+- [docs/conventions.md](docs/conventions.md) — 코드 컨벤션
+- [docs/domains/](docs/domains/) — 도메인별 구현 상태와 설계 결정
+- [docs/api.md](docs/api.md) — API 계약 공통 규칙 (엔드포인트 목록은 Swagger 참고)
+- [docs/erd.md](docs/erd.md) — 엔티티 관계 요약
+- [docs/workflow.md](docs/workflow.md) — 브랜치 전략, 기획 미확정 시 대응 원칙
+- [docs/deployment.md](docs/deployment.md) — 배포, 환경변수
+- [docs/local-setup.md](docs/local-setup.md) — 로컬 개발 환경 설정, 트러블슈팅
