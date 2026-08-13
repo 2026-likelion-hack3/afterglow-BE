@@ -1,10 +1,25 @@
 # Contributing
 
-Afterglow Backend 저장소에 기여하는 방법을 정리한다. 코드 스타일 세부 규칙은 [docs/CONVENTIONS.md](docs/CONVENTIONS.md)를 참고한다.
+Afterglow Backend 저장소에 기여하는 방법을 정리한다. 코드 스타일 세부 규칙은 [docs/conventions.md](docs/conventions.md)를 참고한다.
 
-## 브랜치 규칙
+## 브랜치 전략
 
-`main`에서 분기하며, 브랜치명은 이슈 번호와 짧은 설명을 포함한다.
+```
+feature/fix/refactor/chore
+        ↓ PR (base: dev)
+       dev
+        ↓ PR (base: main, 릴리즈 시점)
+       main
+        ↓
+   production
+```
+
+- `dev`가 integration branch이자 GitHub default branch다. **모든 작업 브랜치는 `dev`에서 분기하고, PR도 `dev`를 base로 연다.**
+- `main`은 release/production branch다. `dev`가 배포 가능한 상태가 되면 `dev` → `main` PR로 승격한다. 평소 작업에서는 `main`을 직접 건드리지 않는다.
+
+## 브랜치 이름 규칙
+
+브랜치명은 이슈 번호와 짧은 설명을 포함한다.
 
 ```
 feat/{issue-number}-{short-description}
@@ -53,10 +68,10 @@ chore: 프로젝트 공통 설정 추가
 - Entity를 API 응답으로 직접 노출하지 않는다. Request/Response DTO를 분리한다.
 - Controller는 요청·응답 변환만 담당하고, 유스케이스 조정은 Service/Application 계층에 둔다.
 - Repository는 Controller에서 직접 호출하지 않는다.
-- 자세한 규칙은 [docs/CONVENTIONS.md](docs/CONVENTIONS.md) 참고.
+- 자세한 규칙은 [docs/conventions.md](docs/conventions.md) 참고.
 
 ## 하지 말아야 할 것
 
 - `.env`, 실제 비밀번호, RDS 주소 등 민감정보를 커밋하지 않는다.
-- 얼굴 사진 등 개인정보 처리 방식을 바꾸는 변경은 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)의 원칙을 따른다.
+- 얼굴 사진 등 개인정보 처리 방식을 바꾸는 변경은 [docs/architecture.md](docs/architecture.md)의 원칙을 따른다.
 - 진단·치료 등 의료행위로 오인될 수 있는 표현을 사용하지 않는다.
