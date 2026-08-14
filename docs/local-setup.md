@@ -14,11 +14,11 @@ java -version
 
 PostgreSQL을 준비하는 방법은 두 가지다. **반드시 둘 중 하나만 선택한다.**
 
-> **포트 충돌 주의**: 두 방법 모두 기본적으로 호스트 포트 `5432`를 사용한다. 방법 A(Docker Compose)와 방법 B(로컬 설치, 또는 Windows/macOS 서비스로 이미 상시 실행 중인 PostgreSQL)를 동시에 띄우면 `5432` 포트가 충돌해 컨테이너가 뜨지 않거나 앱이 의도치 않은 쪽에 접속한다. 이미 로컬에 PostgreSQL이 서비스로 설치되어 있는지 먼저 확인한다.
-> - Windows: `Get-Service | Where-Object { $_.DisplayName -like "*PostgreSQL*" }` 로 실행 중인 서비스가 있는지 확인한다.
-> - 이미 실행 중인 로컬 설치가 있다면 방법 B를 사용하거나, Docker Compose를 쓰려면 `.env`의 `POSTGRES_PORT`를 5432가 아닌 값으로 바꾸고 `application-local.yml` 접속 URL의 포트도 함께 맞춘다.
+> **포트 충돌 주의**: Windows에 PostgreSQL이 네이티브 서비스로 설치돼 있으면 기본 포트 `5432`를 그 서비스가 상시 점유한다. 그래서 Docker Compose PostgreSQL은 **호스트 포트 `5433`**을 기본값으로 쓰도록 분리되어 있다(컨테이너 내부 포트는 표준 `5432` 그대로, 호스트에 노출되는 포트만 다르다). `application-local.yml`도 기본값이 `localhost:${DB_PORT:5433}`이라 별도 설정 없이 `docker compose up -d` → 앱 실행만으로 항상 Docker PostgreSQL에 붙는다 — 네이티브 PostgreSQL이 떠 있어도 무시된다.
+> - Windows: `Get-Service | Where-Object { $_.DisplayName -like "*PostgreSQL*" }` 로 네이티브 서비스가 실행 중인지 확인할 수 있다(있어도 상관없다, 이 저장소 로컬 개발은 항상 Docker Compose 쪽을 본다).
+> - 네이티브 설치를 쓰기로 했다면(방법 B) `.env`의 `DB_PORT`를 `5432`로 바꾼다 — docker-compose의 컨테이너 노출 포트와 앱 접속 URL 양쪽이 이 변수 하나로 같이 바뀐다.
 
-### 방법 A — Docker Compose (권장)
+### 방법 A — Docker Compose (권장, 기본값)
 
 저장소 루트의 `docker-compose.yml`은 PostgreSQL 컨테이너만 정의한다(애플리케이션 컨테이너나 Dockerfile은 없음).
 
@@ -27,7 +27,7 @@ PostgreSQL을 준비하는 방법은 두 가지다. **반드시 둘 중 하나�
    copy .env.example .env      # Windows
    cp .env.example .env        # macOS/Linux
    ```
-   기본값(`afterglow`/`afterglow`/포트 `5432`)을 그대로 써도 되고, 필요하면 `.env`에서 바꾼다. `.env`는 `.gitignore`에 포함되어 있어 커밋되지 않는다.
+   기본값(`afterglow`/`afterglow`/호스트 포트 `5433`)을 그대로 써도 되고, 필요하면 `.env`에서 바꾼다. `.env`는 `.gitignore`에 포함되어 있어 커밋되지 않는다.
 
 2. 컨테이너를 띄운다.
    ```
@@ -65,7 +65,7 @@ PostgreSQL을 준비하는 방법은 두 가지다. **반드시 둘 중 하나�
    CREATE USER afterglow WITH PASSWORD 'afterglow';
    CREATE DATABASE afterglow OWNER afterglow;
    ```
-4. `application-local.yml`의 기본 접속 정보(`localhost:5432/afterglow`, 계정 `afterglow`/`afterglow`)와 맞춘다. 다른 계정/비밀번호를 쓰려면 환경변수 `DB_USERNAME`, `DB_PASSWORD`로 덮어쓴다.
+4. `application-local.yml`의 접속 정보는 기본값이 `localhost:${DB_PORT:5433}/afterglow`(계정 `afterglow`/`afterglow`)다. 네이티브 설치는 보통 표준 포트 `5432`를 쓰므로 환경변수 `DB_PORT=5432`로 덮어써야 한다. 다른 계정/비밀번호를 쓰려면 `DB_USERNAME`, `DB_PASSWORD`도 함께 덮어쓴다.
 5. 기존에 설치된 PostgreSQL의 `pg_hba.conf` 인증 방식이 `scram-sha-256`(비밀번호 인증)인지 확인한다. 관리자(`postgres`) 계정 비밀번호를 모르면 1~3단계를 진행할 수 없으므로, 해당 계정을 관리하는 팀원/설치자에게 비밀번호를 받거나 직접 접속해 role/DB를 만들어달라고 요청한다.
 
 ## 3. 환경변수 설정
@@ -143,11 +143,11 @@ gradlew.bat bootRun
 ## 8. DB 연결 실패 시 확인 사항
 
 - PostgreSQL이 실행 중인지 확인한다.
-  - Docker Compose 사용 시: `docker compose ps`로 `postgres` 서비스가 `healthy` 상태인지 확인한다.
+  - Docker Compose 사용 시: `docker compose ps`로 `postgres` 서비스가 `healthy` 상태인지, 호스트 포트가 `5433`으로 매핑됐는지 확인한다.
   - 로컬 설치 사용 시: 서비스가 기동 중인지, 포트 5432가 열려 있는지 확인한다.
-- 접속 정보(호스트/포트/DB명/계정/비밀번호)가 `application-local.yml`의 기본값 또는 설정한 환경변수와 일치하는지 확인한다.
-- `.env`의 `POSTGRES_PORT`를 5432가 아닌 값으로 바꿨다면, 애플리케이션 접속 URL(`application-local.yml`)의 포트도 함께 맞춰야 한다(기본 설정은 5432 고정이므로 포트를 바꿨다면 `DB_URL` 등으로 별도 오버라이드가 필요하다).
-- 방화벽 또는 다른 프로세스가 5432 포트를 점유하고 있지 않은지 확인한다.
+- 접속 정보(호스트/포트/DB명/계정/비밀번호)가 `application-local.yml`의 기본값(`DB_PORT` 기본 `5433`) 또는 설정한 환경변수와 일치하는지 확인한다.
+- `.env`의 `DB_PORT`가 docker-compose 컨테이너 노출 포트와 앱 접속 URL 양쪽에 동시에 쓰인다. 단 `docker compose`는 `.env`를 자동으로 읽지만 `./gradlew bootRun`은 읽지 않으므로, 앱을 실행하는 셸(또는 IntelliJ 설정)에도 같은 `DB_PORT` 값을 export해야 한다 — `.env`만 바꾸고 셸에 반영하지 않으면 컨테이너와 앱이 다른 포트를 보게 된다.
+- **스키마 관련 에러라면** — `ddl-auto: validate`이므로 Hibernate가 스키마를 만들지 않는다. Flyway가 기동 시 자동으로 `V1__baseline.sql`(과 이후 마이그레이션)을 실행하므로, 새로 만든 빈 DB인데도 실패한다면 Flyway 로그(`Migrating schema "public" to version "1 - baseline"`)가 실제로 찍히는지 먼저 확인한다.
 
 ## 9. Claude Code MCP 설정
 
