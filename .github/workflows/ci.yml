@@ -28,8 +28,11 @@ jobs:
           --health-retries 5
 
     env:
-      # application-local.yml이 localhost:5432/afterglow을 고정 사용하므로 local 프로파일을 그대로 재사용한다.
+      # local 프로파일을 그대로 재사용한다. local 기본 DB_PORT(5433)는 로컬 네이티브 PostgreSQL과의
+      # 포트 충돌을 피하기 위한 값이라 CI에는 해당 없음 — CI의 postgres 서비스는 컨테이너 표준 포트인
+      # 5432로 호스트에 매핑돼 있으므로 DB_PORT로 되돌린다.
       SPRING_PROFILES_ACTIVE: local
+      DB_PORT: "5432"
       DB_USERNAME: ci_user
       DB_PASSWORD: ci_password
 
