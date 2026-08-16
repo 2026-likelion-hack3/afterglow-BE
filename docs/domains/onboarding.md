@@ -6,7 +6,7 @@
 
 ## Current Status
 
-**미구현.** `package-info.java`만 존재.
+**1.1 기본 정보 입력(연령대/월경 상태) 구현 완료.** 1.2 홈 대시보드, 1.3 지연 회원가입 UI 트리거는 미구현.
 
 ## Planned Features
 
@@ -16,11 +16,20 @@
 
 ## Domain Model
 
-미확정 — 임의로 설계하지 않음.
+- `Onboarding`(id, accountId, ageRange nullable, menstrualStatus nullable, onboardingCompletedAt nullable) — `account_id` UNIQUE, 계정당 한 row.
+- `AgeRange`: `FORTY_TO_FORTY_FOUR`, `FORTY_FIVE_TO_FORTY_NINE`, `FIFTY_TO_FIFTY_FOUR`, `FIFTY_FIVE_TO_FIFTY_NINE`, `SIXTY_OR_OLDER`
+- `MenstrualStatus`: `REGULAR`, `IRREGULAR`, `SKIPPED_TWO_MONTHS_OR_MORE`, `MENOPAUSE_ONE_YEAR_OR_MORE`, `ABSENT_DUE_TO_SURGERY_OR_TREATMENT`, `PREFER_NOT_TO_ANSWER`
+- `onboardingCompletedAt`은 최초 제출 시점에만 채워지고 이후 재제출로 값이 바뀌지 않는다("한 번이라도 온보딩을 마쳤는지"를 나타내는 시각).
+
+## API
+
+- `GET /api/onboarding` — row가 없으면 모든 필드가 null인 200(row를 생성하지 않음).
+- `PUT /api/onboarding` — idempotent upsert. 둘 다 null(전체 스킵)도 허용하며 완료 시각은 그대로 기록된다. 완료 후 재호출로 값 수정 가능.
+- 둘 다 `@AuthenticationPrincipal Long accountId`만 사용, 존재하지 않는(삭제된) 계정이면 404.
 
 ## Dependencies
 
-`account` — 온보딩 데이터를 저장하려면 이미 존재하는 익명 `accountId`가 전제된다.
+`account` — 온보딩 데이터를 저장하려면 이미 존재하는 익명 `accountId`가 전제된다. `Account` 삭제 시 `AccountDeletedEvent`(`@TransactionalEventListener(BEFORE_COMMIT)`)로 `Onboarding` row도 같은 트랜잭션에서 함께 삭제된다.
 
 ## Confirmed Decisions
 
@@ -30,7 +39,7 @@
 
 ## Pending Decisions
 
-없음 — 위 항목들이 확정되어 더 이상 열려 있는 질문이 없다. 구체적인 Entity/API 설계는 구현 착수 시점에 진행한다.
+없음.
 
 ## Source of Truth
 
