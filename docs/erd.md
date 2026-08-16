@@ -22,6 +22,9 @@
 - `Product`(accountId, name, brand, type, keyIngredients, functionTags, openedAt, usageTiming, interactionTags, registrationSource, barcode nullable, photoKey nullable)
 - `CombinationRule`(tagA, tagB nullable, minCount, warningMessage) — `Product`와 직접 관계 없음, 태그 조합만으로 판단
 
+**onboarding**
+- `Onboarding`(accountId, ageRange nullable, menstrualStatus nullable, onboardingCompletedAt nullable) — `accountId` UNIQUE, `Account`와 FK 없음. `Account` 삭제 시 이벤트로 함께 삭제된다.
+
 ## 아직 엔티티가 없는 도메인
 
-`onboarding`, `episode.analysis`(설계는 확정됐으나 엔티티 미구현) `/card/routine/checkin`, `trust`, `story`, `tracking`, `notification`은 엔티티가 없다. 이 문서에 구체적 스키마를 임의로 넣지 않는다. 각 도메인의 확정/미확정 설계는 [docs/domains/](domains/)를 참고한다.
+`episode.analysis`(설계는 확정됐으나 엔티티 미구현) `/card/routine/checkin`, `trust`, `story`, `tracking`, `notification`은 엔티티가 없다. 이 문서에 구체적 스키마를 임의로 넣지 않는다. 각 도메인의 확정/미확정 설계는 [docs/domains/](domains/)를 참고한다.

@@ -3,10 +3,12 @@ package com.afterglow.domain.account.application;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.afterglow.domain.account.domain.Account;
+import com.afterglow.domain.account.domain.AccountDeletedEvent;
 import com.afterglow.domain.account.domain.AccountRepository;
 import com.afterglow.domain.account.domain.EmailSender;
 import com.afterglow.domain.account.domain.EmailVerification;
@@ -30,6 +32,7 @@ public class AccountService {
 	private final EmailVerificationRepository emailVerificationRepository;
 	private final EmailSender emailSender;
 	private final JwtTokenProvider jwtTokenProvider;
+	private final ApplicationEventPublisher eventPublisher;
 	private final SecureRandom secureRandom = new SecureRandom();
 
 	/**
@@ -89,15 +92,15 @@ public class AccountService {
 	}
 
 	/**
-	 * 계정만 삭제한다. 다른 도메인이 실제로 accountId를 참조하는 데이터를 쌓기 시작하면
-	 * 그 시점에 연관 데이터 정리 방식(이벤트 기반 정리 등)을 다시 정한다 — 아직은 참조하는 데이터가 없다.
-	 * 조회(존재 확인) 후 삭제하는 흐름이 하나의 일관된 트랜잭션 안에서 이뤄지도록 @Transactional을 둔다 —
-	 * 삭제는 되돌릴 수 없는 동작이라 명시적 경계를 남겨두는 편이 안전하다.
+	 * 계정을 삭제하고 다른 도메인에 AccountDeletedEvent를 발행한다 — Account는 누가 어떻게 정리하는지 알지
+	 * 못하고, 각 도메인이 자기 데이터를 정리한다(현재는 onboarding만 구독). 삭제와 이벤트 발행이 하나의
+	 * 트랜잭션 안에서 이뤄져야 리스너가 실패했을 때 계정 삭제까지 함께 롤백되므로 @Transactional을 둔다.
 	 */
 	@Transactional
 	public void deleteAccount(Long accountId) {
 		Account account = getAccount(accountId);
 		accountRepository.delete(account);
+		eventPublisher.publishEvent(new AccountDeletedEvent(accountId));
 	}
 
 	private Account getAccount(Long accountId) {
