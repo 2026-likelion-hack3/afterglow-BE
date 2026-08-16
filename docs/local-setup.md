@@ -72,16 +72,20 @@ PostgreSQL을 준비하는 방법은 두 가지다. **반드시 둘 중 하나�
 
 `.env.example`을 참고해 필요한 값을 설정한다. `local` 프로파일은 `DB_USERNAME`/`DB_PASSWORD`를 지정하지 않으면 `afterglow`/`afterglow` 기본값을 사용하므로, Docker Compose 기본값을 그대로 쓴다면 별도 설정 없이 실행할 수 있다.
 
+**`JWT_SECRET`은 repository에 기본값이 없어 local에서도 반드시 직접 지정해야 한다** — 없으면 기동 자체가 실패한다. `openssl rand -base64 48`(또는 동등한 방법)로 생성한 값을 쓴다.
+
 셸에서 직접 지정하려면:
 
 ```
 # Windows (PowerShell)
 $env:DB_USERNAME = "afterglow"
 $env:DB_PASSWORD = "afterglow"
+$env:JWT_SECRET = "<직접 생성한 값>"
 
 # macOS/Linux
 export DB_USERNAME=afterglow
 export DB_PASSWORD=afterglow
+export JWT_SECRET=<직접 생성한 값>
 ```
 
 ## 4. 애플리케이션 실행 (local 프로파일)
@@ -111,7 +115,7 @@ gradlew.bat bootRun --args="--spring.profiles.active=local"
 ## 5. IntelliJ 실행 설정
 
 1. `AfterglowBeApplication`을 Run Configuration으로 연다.
-2. Environment variables에 필요 시 `DB_USERNAME`, `DB_PASSWORD`를 추가한다(기본값을 쓴다면 생략 가능).
+2. Environment variables에 필요 시 `DB_USERNAME`, `DB_PASSWORD`를 추가한다(기본값을 쓴다면 생략 가능). `JWT_SECRET`은 기본값이 없으므로 반드시 추가한다.
 3. 활성 프로파일을 명시하고 싶다면 VM options에 `-Dspring.profiles.active=local`을 추가하거나, Program arguments에 `--spring.profiles.active=local`을 추가한다. 아무것도 지정하지 않아도 `spring.profiles.default: local`에 의해 local이 적용된다.
 4. `SPRING_PROFILES_ACTIVE=prod`는 로컬 실행 설정에 넣지 않는다(운영 전용).
 
