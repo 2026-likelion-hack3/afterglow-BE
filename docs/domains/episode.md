@@ -11,7 +11,7 @@
 | 서브도메인 | 명세 범위 | 상태 |
 |---|---|---|
 | `intake` | 2.1~2.3 (사진 촬영 제외) | **구현 완료** |
-| `analysis` | 2.4 통합 분석 | 기획 blocker 대부분 해소(2026-08-13 추가 답변 — 후보 수집/제외/보류 규칙, score 3/2/1 환산 전부 확정) / 남은 항목(70% 경계값, combination evidence 구조)은 backend 구현 시점 결정 사항 / 코드 구현은 아직 착수 전 |
+| `analysis` | 2.4 통합 분석 | 기획 blocker 전부 해소. **판정 엔진(`CauseAnalysisEngine`/`RuleBasedCauseAnalysisEngine`) 구현 완료** — candidate 수집, 근거 강도, ranking/gap/HOLD/confidence까지 순수 함수로 동작. Vanity/Tracking 실제 데이터 연동(Repository, `EpisodeAnalysisService`, Controller/API, DB 저장)은 두 도메인에 데이터 소스가 생긴 뒤 별도로 진행 — 아래 Confirmed Decisions 참고 |
 | `card` | 3.1, 4.3 | analysis 의존성 및 화면 요구사항 일부 확정 / 미구현 |
 | `routine` | 3.2 | 미구현 |
 | `checkin` | 4.1~4.2 | 미구현 |
@@ -26,18 +26,25 @@
 
 ## Domain Model
 
-(`intake`만 코드 존재. Episode aggregate는 서브도메인이 공유하므로 `domain/episode/domain`에 위치 — [architecture.md](../architecture.md#episode-하위-패키지-관계) 참고)
+(`intake`/`analysis`만 코드 존재. Episode aggregate는 서브도메인이 공유하므로 `domain/episode/domain`에 위치 — [architecture.md](../architecture.md#episode-하위-패키지-관계) 참고)
 
 - `Episode`: `accountId`, `status`(`SYMPTOM_SELECTED`/`INTAKE_COMPLETED`), `symptom`(`@Embedded`), `intake`(`@Embedded`), `bodyParts`(`@ElementCollection`)
 - `Symptom`: `angle`(0~360, raw), `radius`(0~1, raw), `primarySymptom`(5종: `DRYNESS_TIGHTNESS`/`ITCHING`/`STINGING`/`REDNESS`/`TROUBLE`), `severity`(4단계: `NORMAL`/`MILD`/`MODERATE`/`SEVERE`). angle/radius로부터 primarySymptom/severity를 서버가 재계산하지 않는다 — FE가 확정해서 보낸 값을 그대로 저장한다.
 - `Intake`: `onsetPeriod`(4구간), `recentNewProductName`(자유 텍스트), `notes`(nullable). `bodyParts`는 `WHOLE_FACE`와 다른 부위 동시 선택을 도메인에서 차단한다.
+- `analysis`는 엔티티가 아니라 순수 판정 엔진이다(DB 저장 없음, `domain.episode.analysis.domain` 패키지):
+  - `CauseAnalysisEngine`(interface) / `RuleBasedCauseAnalysisEngine`(구현체) — `AnalysisInput` → `AnalysisResult`.
+  - 입력: `AnalysisInput`(analysisDate + `ProductCandidateInput`/`CombinationCandidateInput`/`ObservationCandidateInput`×2(수면/날씨)), 각 후보는 `RecordCoverage`(최초 기록일)를 갖는다.
+  - 출력: `AnalysisResult`(정렬된 `CandidateResult` 목록, `CandidateExclusion` 목록, hold 여부, topCandidate, `Confidence`). `topCandidate`/`confidence`는 "최종 선택된 원인"을 뜻하며 `candidates.get(0)`(정렬상 1번째)과는 다르다 — same-type tie로 HOLD면 둘 다 null이다(이 불변식은 `AnalysisResult`의 compact constructor가 강제한다). 게이트에서 제외된 후보는 `candidates`가 아니라 `exclusions`(`CandidateExclusion`: type + `ExclusionReason`(`NO_TARGET`/`INSUFFICIENT_RECORDS`) + 식별자)에 남는다. `CandidateResult`는 `CandidateType`/`EvidenceStrength`/`Evidence`(sealed: `TimingEvidence`/`CombinationEvidence`/`FrequencyEvidence`)로 구성.
 
-`analysis` 이후 서브도메인은 코드가 없다. 설계는 확정됐지만 엔티티로 아직 옮겨지지 않았다 — 아래 Confirmed Decisions 참고.
+`card` 이후 서브도메인은 코드가 없다. 설계는 확정됐지만 엔티티로 아직 옮겨지지 않았다 — 아래 Confirmed Decisions 참고.
 
 ## Dependencies
 
 - 서브도메인 간: `intake → analysis → card → routine → checkin` 순차 의존(역방향 지양).
-- `analysis`는 명세상 `vanity`(보유 제품 상호작용 태그/기능 태그)와 `tracking`(최근 7일 수면·날씨)을 입력으로 참조할 예정이나, 두 도메인 모두 코드가 없어 실제 연동은 없다. 연동용 read port는 실제 판정 엔진을 구현하는 시점에 설계하기로 했다(소비자가 없는 인터페이스를 미리 만들지 않는다).
+- `analysis`의 판정 엔진 자체는 `vanity`/`tracking`을 코드로 의존하지 않는다(정규화된 입력 모델만 안다). 다만 실제 운영에서 그 입력을 채우려면 두 도메인에서 아래 데이터가 필요하다 — 두 도메인 모두 아직 코드가 없어 실제 연동은 없다:
+  - **`vanity`에서 필요**: 계정의 제품별 사용 시작일(`ProductCandidateInput.usageStartDate`), 같은 기간 내 사용 시작한 제품 수(`changedProductCountInWindow`), 충돌 태그를 가진 제품 쌍과 그 배치(같은 time slot/AM·PM 분리, `CombinationCandidateInput`) — 즉 최소 "제품별 사용 시작일 조회"와 "보유 제품 중 충돌 조합 판별" 기능이 필요하다.
+  - **`tracking`에서 필요**: 최근 수면/날씨 관측 횟수와 그중 증상과 일치한 횟수(`ObservationCandidateInput`), 그리고 각 후보의 최초 기록일(coverage) — 즉 최소 "계정별 수면/날씨 관측 집계" 기능이 필요하다.
+  - 실제 read port(Repository/Service 호출 방식)는 두 도메인의 데이터가 준비된 뒤, `EpisodeAnalysisService`를 만드는 시점에 설계한다(소비자가 없는 인터페이스를 미리 만들지 않는다).
 - `card`는 결과 카드 화면 하단 진입점을 통해 `story`(같은 증상 태그의 글 개수/목록)에 의존한다. `story`도 미구현 상태라 실제 연동은 없다.
 - `card` ↔ `vanity`/`story` 간 실제 조회 방식(동기 호출/read model/캐시 등)과 `analysis`/`card` REST API를 하나로 묶을지 분리할지는 기획 확인 대상이 아니라 backend architecture 결정 사항이다 — 실제 구현 시점에 정한다.
 
@@ -56,13 +63,13 @@
 - **후보별 근거 강도(강/중/약) 판정 기준**이 확정됐다:
   - **특정 제품**: 사용 시작이 증상 시작보다 앞서고 14일 이내이며, 같은 기간 변경된 다른 제품이 없으면 강. 시점은 맞지만 동시에 변경된 제품이 2개 이상이면 중. 시점 관계가 어긋나면 약.
   - **제품 조합**: 충돌 태그를 가진 제품이 같은 시간대에 배치되면 강. 충돌은 있지만 아침/저녁으로 분리되면 중. 충돌이 없으면 약.
-  - **수면 / 날씨**: 관찰 5회 이상 + 일치 비율 70% 이상이면 강. 관찰 3~4회 또는 일치 비율 50~70%면 중. 그 미만이면 약. **⚠ 정확히 70%일 때 "강"(70% 이상) 조건과 "중"(50~70%) 조건이 겹친다 — 이 경계값은 이번 답변에서도 별도로 확정되지 않았다. 아래 Pending Decisions 참고.**
+  - **수면 / 날씨**: 관찰 5회 이상 + 일치 비율 70% 이상이면 강. 관찰 3~4회 또는 일치 비율 50~70%면 중. 그 미만이면 약. **70% 경계값 확정(2026-08-16)**: "강" 조건(관찰≥5 그리고 일치율≥70%)을 먼저 평가하고, 이를 만족하지 못하면 "중" 조건(관찰 3~4 또는 일치율 50~70%, 양 끝 포함)을 본다 — 즉 정확히 70%는 관찰이 5회 이상일 때만 강이고, 5회 미만이면 중으로 fallback된다. 정수 관측 횟수에서는 "관찰 5회 미만 + 일치율 정확히 70%"는 산술적으로 나올 수 없다(70%를 정수 분수로 표현하려면 분모가 최소 10 이상이어야 한다) — 이 조합 자체가 불가능하다는 점도 확인했다.
 - **후보별 근거 강도를 점수로 환산하는 기준**이 확정됐다(2026-08-13 추가 답변): 강 = 3, 중 = 2, 약 = 1. 아래 확신 단계 계산의 `점수`는 이 값을 쓴다.
 - **후보 수집(candidate 생성) 조건**이 확정됐다(2026-08-13 추가 답변) — 4종 후보 각각에 공통으로 적용:
   - 대상 없음(예: 최근 새로 쓰는 제품 없음, 충돌 조합 없음) → 후보 목록에서 제외, 사유 `대상 없음`
   - 기록 7일 미만 → 후보 목록에서 제외, 사유 `기록 부족`
   - 대상 있음 → 후보 목록에 추가하고 위 근거 강도(강/중/약) 계산 진행
-  - **⚠ 충돌 표시**: 이 "기록 7일 미만" 조건이 정확히 무엇을 세는지(예: 전체 트래킹 기록 일수인지, 해당 후보 유형에 대한 관측 일수인지)와, 기존에 확정돼 있던 유형별 강도 판정 기준의 시간 단위가 서로 다르다 — 수면/날씨는 "관찰 횟수"(3~5회 이상)를 쓰고, 특정 제품은 "14일 이내" 시점 윈도우를 쓴다. "기록 7일" 게이트가 이 둘과 정확히 어떻게 맞물리는지(예: 관찰 횟수와 기록 일수가 같은 개념인지, 특정 제품의 14일 윈도우에도 7일 게이트가 선행 적용되는지) 이번 답변에서 명시적으로 정리되지 않았다 — 임의로 통일하지 않고 아래 Pending Decisions에 남긴다.
+  - **"기록 7일" 게이트 정의 확정(2026-08-16)**: record 건수가 아니라 **calendar-day coverage**다 — 해당 후보 데이터의 최초 기록일부터 분석 기준일(`episode.createdAt`의 날짜)까지의 날짜 수(양 끝 포함)가 7 이상이면 통과한다(예: 8/10~8/16 = 7일 → 통과). 관찰 횟수(수면/날씨의 3~5회 이상)나 14일 timing window(특정 제품)와는 별개의 규칙이며, 하나로 합치지 않는다 — 관찰 3~4회여도 최초 기록일이 7 calendar days 이상 전이면 이 게이트는 통과할 수 있다(그 다음 근거 강도 판정에서 "관찰 3~4회 → 중"으로 별도 평가된다).
 - **보류(withhold) 판정 조건**이 확정됐다(2026-08-13 추가 답변, 기존 규칙 확장):
   - 후보 목록이 비어 있음 → 보류
   - 1순위 근거 강도가 약 → 보류
@@ -77,7 +84,7 @@
 - **근거 객체(evidence)는 종류(type)를 갖는 구조화된 데이터**로 확정됐다. Backend가 이 구조화된 evidence object를 산출해 넘기는 것 자체는 (문장 생성 주체와 별개로) 확정된 요구사항이다. **후보 유형별 evidence 종류 매핑이 확정됐다(2026-08-13 추가 답변)**:
   - 특정 제품 → 시점형(timing) evidence: 제품 사용 시작일, 증상 시작일
   - 수면 / 날씨 → 빈도형(frequency) evidence: 관찰 횟수, 전체 횟수
-  - 제품 조합 → combination 성격의 별도 evidence 타입이 필요하다는 방향만 확정. 정확한 JSON/DTO 구조는 기획 blocker가 아니라 backend 구현 시점 결정 사항으로 남는다(아래 Implementation Decisions Pending 참고) — 이번 답변에서 필드 구조까지 확정하지 않는다.
+  - 제품 조합 → combination evidence(`CombinationEvidence`: 충돌 태그 쌍 + 배치 방식) 구조 확정(2026-08-16, 아래 코드 구조 결정 참고).
   - 다만 근거 문장을 Backend가 완성 문장으로 내려줄지, Frontend가 구조화된 evidence로 문장을 조립할지는 Backend/API Contract 결정 사항으로 남겨둔다(기획 확인 대상 아님).
 
 **card — 확정된 화면 요구사항**
@@ -98,21 +105,25 @@
 - "확신 수준"과 "기준 통과 여부(sufficientEvidence)"는 서로 다른 정보라 별개 필드로 분리해서 저장한다.
 - 분석 실패(엔진 예외)와 확신 수준 미달("판단하기 이릅니다")은 다른 케이스로 처리한다: 확신 수준 미달은 정상 완료이므로 `ANALYZED` 상태로 전이하고, 진짜 실패는 Episode 상태를 바꾸지 않아 재시도가 그냥 같은 API 재호출이 되게 한다.
 - 이미 `ANALYZED`인 Episode에 재요청하면 엔진을 다시 돌리지 않고 기존 결과를 그대로 반환한다(idempotent) — 네트워크 재시도 대응.
-- `CauseAnalysisEngine` 인터페이스(입력 Episode → 출력 결과 계약)만 정의하고, 실제 판정 로직 구현체는 만들지 않는다. Controller/Service도 구현체가 없는 상태에서는 만들지 않는다 — 부팅 리스크와, 항상 에러만 나는 API를 배포하는 걸 피하기 위해서다.
+- **(2026-08-16 변경)** 이전에는 "`CauseAnalysisEngine` 인터페이스만 정의하고 실제 구현체는 만들지 않는다"였으나, 판정 규칙 자체가 이미 전부 확정되어 데이터 연동과 독립적으로 구현·검증할 수 있다는 판단에 따라 결정을 바꿨다. 새 기준:
+  - `CauseAnalysisEngine`의 **실제 구현체(`RuleBasedCauseAnalysisEngine`)를 지금 구현한다.** 입력(`AnalysisInput`)만으로 결정적(pure/deterministic)으로 동작하며, Repository·Spring Bean·외부 호출·`LocalDateTime.now()`에 의존하지 않는다 — 분석 기준일은 항상 입력으로 받는다.
+  - 엔진은 Vanity/Tracking의 실제 엔티티나 concrete 타입을 참조하지 않는다. 대신 엔진이 판단하기에 필요한 최소한으로 정규화된 입력 모델(`ProductCandidateInput`/`CombinationCandidateInput`/`ObservationCandidateInput`)만 안다.
+  - **Controller/API, `EpisodeAnalysisService`(orchestration), Vanity/Tracking 실제 데이터 조회, 분석 결과 DB 저장(V3 migration)은 여전히 만들지 않는다.** Vanity에는 아직 Repository가, Tracking에는 아직 엔티티가 전혀 없어(둘 다 팀원 담당 영역), 지금 이 계층까지 만들면 항상 "대상 없음"만 반환하는 API를 배포하게 된다 — 이 부분은 이전 결정의 우려(부팅 리스크·항상 에러/빈 응답만 나는 API)가 여전히 유효하므로 그대로 유지한다. 실제 연동은 두 도메인의 데이터가 준비된 뒤 별도 Issue로 진행한다.
 
 ## Pending Decisions
 
 **기획 확인 필요 (아직 열려 있는 질문)**
 
-- **70% 경계값**: 수면/날씨 근거 강도의 "강"(일치 비율 70% 이상)과 "중"(50~70%) 조건이 정확히 70%에서 겹친다. 2026-08-13 추가 답변에서도 이 경계값은 별도로 확정되지 않았다 — 구현 전에 70%를 포함(강)/제외(중) 어느 쪽으로 볼지 deterministic한 규칙을 정해야 한다.
-- **"기록 7일 미만" 제외 조건의 정확한 정의와 기존 기준과의 정합성**: "기록 7일 미만 → 후보 제외"가 세는 대상(전체 트래킹 기록 일수 vs 해당 후보 유형에 대한 관측 일수)이 명시되지 않았고, 기존에 확정된 수면/날씨의 "관찰 횟수"(3~5회) 기준, 특정 제품의 "14일 이내" 시점 윈도우 기준과 어떤 관계인지도 불명확하다 — 세 기준을 임의로 통일하지 않았으니 구현 전 기획 재확인이 필요하다.
 - 카드에 표시되는 "보습", "세라마이드" 등 태그가 `vanity`의 `InteractionTag`(5종)와 별도 체계(`functionTags`/`keyIngredients`)인지, 그렇다면 어떻게 조합해 내려줄지
 - Figma 결과 화면의 "좋아졌다" 버튼이 실제로 어떤 행동을 트리거하는지 — 3일차 판정의 "좋아짐"과 동일한 행동인지, 결과 직후 별도 피드백인지. 현재 기능명세(결과 카드 3장)에는 이 버튼에 대응하는 요구사항이 없다.
 
 **Implementation Decisions Pending (기획 blocker 아님 — backend 구현 시점에 정할 것)**
 
-- **사진(선택 촬영) 사용 여부**: 2026-08-13 추가 답변으로 기획 blocker에서 backend 구현 판단 항목으로 전환됨. "원인 분석 점수 계산에 포함한다" / "3일차(Day 3) 비교에만 사용한다" 중 아직 확정하지 않았다 — 임의로 결정해 문서화하지 않는다.
-- **제품 조합 evidence의 정확한 DTO/JSON 구조**: combination이라는 별도 evidence 타입이 필요하다는 방향만 확정됐고, 정확한 필드 구조는 실제 구현 시점에 backend가 정한다.
+- **사진(선택 촬영) 사용 여부**: 2026-08-16 결정 — 이번 판정 엔진 구현에서는 사진을 candidate 강도 계산에 포함하지 않는다(엔진 입력에 사진 관련 필드 자체가 없다). "3일차(Day 3) 비교 전용으로 쓴다"는 방향은 유지하되, 그 기능은 아직 구현하지 않는다. Episode에 이미 있는 사진 데이터는 그대로 보존만 하고 이번 범위에서 새로 다루지 않는다.
+
+**Backend 구현 완료(2026-08-16), 아래 참고**
+
+- ~~70% 경계값~~ / ~~"기록 7일 미만" 제외 조건 정의~~ / ~~제품 조합 evidence DTO 구조~~ → 위 Confirmed Decisions에 반영 완료.
 
 ## Source of Truth
 
