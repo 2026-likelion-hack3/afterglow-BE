@@ -10,8 +10,8 @@
 - Service(Application) 계층은 유스케이스 조정을 담당한다. 도메인 규칙 자체는 도메인 객체 또는 정책 객체에 둔다.
 - Repository를 Controller에서 직접 호출하지 않는다. 항상 Service를 거친다.
 - public setter를 무분별하게 만들지 않는다. 상태 변경은 의미 있는 이름의 메서드로 노출한다(예: `Product.updateDetails(...)`, `Episode.submitIntake(...)`처럼 현재 코드에 적용된 패턴 참고).
-- 트랜잭션 경계를 명확히 표시한다(`@Transactional`을 Service 계층에 명시).
-- 조회 전용 메서드는 `@Transactional(readOnly = true)`를 사용한다.
+- `@Transactional`은 실제로 transaction boundary가 필요한 use case에만 적용한다 — 여러 repository 변경/외부 호출을 하나의 원자적 작업으로 묶어야 하거나, dirty checking·lazy loading처럼 열린 persistence context 안에서만 유효한 동작이 있는 경우. 클래스 레벨 일괄 적용보다 필요한 메서드 단위 적용을 우선한다.
+- 조회 메서드에 `@Transactional(readOnly = true)`를 기계적으로 붙이지 않는다. 단일 조회 후 즉시 반환하는 경우처럼 별도 transactional context가 필요 없으면 생략하고, 여러 조회 간 일관성이나 lazy loading이 필요한 경우에만 사용한다.
 - enum은 DB에 문자열로 저장한다(`@Enumerated(EnumType.STRING)`). ordinal 저장 금지.
 - 시간은 명확한 기준(UTC/KST 등)을 정해 일관되게 다룬다. 현재 `BaseEntity`는 `LocalDateTime` + JPA Auditing을 사용한다.
 - 예외를 무분별하게 `RuntimeException`으로 던지지 않는다. 비즈니스 예외는 `AfterglowException`(또는 그 하위 타입)을 사용하고 `ErrorCode`를 명시한다. 공통 예외 구조는 [architecture.md](architecture.md#global-패키지에-둘-수-있는-것--둘-수-없는-것) 참고.

@@ -15,7 +15,8 @@
 | `DB_PORT` | docker-compose 컨테이너 노출 포트 **+** local 프로파일 DB 접속 포트(하나의 변수를 양쪽이 같이 읽음) | 미지정 시 기본값 `5433`(호스트 — Windows 네이티브 PostgreSQL의 기본 `5432`와 충돌 방지, 컨테이너 내부는 표준 `5432` 그대로). CI는 `5432`로 override. `docker compose`는 `.env`를 자동으로 읽지만 앱 실행(`bootRun` 등)은 읽지 않으므로 셸에도 동일하게 export해야 함 |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | prod 프로파일 DB 접속 정보 | **prod에서는 필수**, 실제 값은 배포 환경변수로만 주입 |
 | `SPRING_PROFILES_ACTIVE` | 활성 프로파일 | prod 배포 시 `prod`로 반드시 지정 |
-| `JWT_SECRET`, `JWT_EXPIRATION_SECONDS` | JWT 서명 키·만료 시간 | local은 기본값 사용 가능, prod는 반드시 배포 환경변수로 지정. **`JWT_SECRET`은 최소 32바이트(256bit) 이상이어야 함** — 짧으면 HS 알고리즘 키 생성 단계(`JwtTokenProvider`)에서 기동 자체가 실패한다(`openssl rand -base64 48` 등으로 생성 권장) |
+| `JWT_SECRET` | JWT 서명 키 | **local/prod 모두 필수, repository에 기본값 없음**(미지정 시 기동 자체가 실패 — fail-fast). 최소 32바이트(256bit) 이상이어야 함 — 짧으면 HS 알고리즘 키 생성 단계(`JwtTokenProvider`)에서 별도로 또 실패한다(`openssl rand -base64 48` 등으로 생성) |
+| `JWT_EXPIRATION_SECONDS` | JWT 만료 시간(초) | 미지정 시 기본값 `2592000`(30일) |
 | `AWS_REGION`, `SES_SENDER_EMAIL` | prod 프로파일에서 SES 이메일 발송 설정 | **prod에서는 필수**. AWS 자격증명 자체는 EC2 IAM role의 기본 자격증명 체인을 사용하므로 별도 키는 필요 없음 |
 
 ## AWS 연동

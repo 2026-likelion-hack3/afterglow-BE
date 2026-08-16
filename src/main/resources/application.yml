@@ -14,7 +14,7 @@ server:
 
 afterglow:
   jwt:
-    secret: ${JWT_SECRET:local-only-development-secret-key-change-this-in-prod-32bytes}
+    secret: ${JWT_SECRET}
     expiration-seconds: ${JWT_EXPIRATION_SECONDS:2592000}
 
 management:
