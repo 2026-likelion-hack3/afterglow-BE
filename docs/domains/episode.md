@@ -14,7 +14,7 @@
 | `analysis` | 2.4 통합 분석 | 기획 blocker 전부 해소. **판정 엔진(`CauseAnalysisEngine`/`RuleBasedCauseAnalysisEngine`) 구현 완료** — candidate 수집, 근거 강도, ranking/gap/HOLD/confidence까지 순수 함수로 동작. Vanity/Tracking 실제 데이터 연동(Repository, `EpisodeAnalysisService`, Controller/API, DB 저장)은 두 도메인에 데이터 소스가 생긴 뒤 별도로 진행 — 아래 Confirmed Decisions 참고 |
 | `card` | 3.1, 4.3 | analysis 의존성 및 화면 요구사항 일부 확정 / 미구현 |
 | `routine` | 3.2 | 미구현 |
-| `checkin` | 4.1~4.2 | **4.1(일일 1탭 체크) 중 "날짜별 상태 기록" 저장/조회 구현 완료.** Routine 연동(3일 루틴 시작 전제조건)과 4.2(3일차 판정 분기)는 Routine이 아직 없어 이번 범위에서 제외 — 아래 Confirmed Decisions 참고 |
+| `checkin` | 4.1~4.2 | **4.1(일일 1탭 체크) "날짜별 상태 기록" 저장/조회 구현 완료. 4.2(3일차 판정)는 순수 판정 규칙(`Day3JudgmentEngine`)만 구현 완료.** 저장된 CheckIn을 실제 Day1/Day2/Day3에 매핑하는 orchestration은 `routine`의 시작일이 있어야 가능해 아직 없음(아래 Confirmed Decisions 참고) — Routine 구현 후 별도 진행 |
 
 ## Planned Features
 
@@ -36,6 +36,7 @@
   - 입력: `AnalysisInput`(analysisDate + `ProductCandidateInput`/`CombinationCandidateInput`/`ObservationCandidateInput`×2(수면/날씨)), 각 후보는 `RecordCoverage`(최초 기록일)를 갖는다.
   - 출력: `AnalysisResult`(정렬된 `CandidateResult` 목록, `CandidateExclusion` 목록, hold 여부, topCandidate, `Confidence`). `topCandidate`/`confidence`는 "최종 선택된 원인"을 뜻하며 `candidates.get(0)`(정렬상 1번째)과는 다르다 — same-type tie로 HOLD면 둘 다 null이다(이 불변식은 `AnalysisResult`의 compact constructor가 강제한다). 게이트에서 제외된 후보는 `candidates`가 아니라 `exclusions`(`CandidateExclusion`: type + `ExclusionReason`(`NO_TARGET`/`INSUFFICIENT_RECORDS`) + 식별자)에 남는다. `CandidateResult`는 `CandidateType`/`EvidenceStrength`/`Evidence`(sealed: `TimingEvidence`/`CombinationEvidence`/`FrequencyEvidence`)로 구성.
 - `checkin`은 `CheckIn` 엔티티(`domain.episode.checkin.domain`, checkin 서브도메인 고유 데이터라 공유 위치가 아님)로 구현했다: `episodeId`(값 참조, FK 없음), `checkInDate`, `status`(`CheckInStatus`: `IMPROVED`/`SAME`/`WORSE`). `episodeId`+`checkInDate` UNIQUE(DB 제약 포함). `overwrite(status)`로 같은 날짜 재기록 시 값을 덮어쓴다(Confirmed Decisions 참고).
+- 4.2 판정은 엔티티/DB 저장 없이 순수 함수로 구현했다: `Day3JudgmentEngine`(`Day3JudgmentInput` → `Day3JudgmentResult`, Repository/Spring 의존 없음) + `Day3JudgmentResult`(`Day3Verdict`: `WITHHELD`/`MAINTAIN`/`EXTEND`/`STOP`). `Day3JudgmentInput`은 `day1Status`/`day2Status`/`day3Status`(각 nullable, 건너뛴 날)를 이미 정리된 값으로 받는다 — **저장된 `CheckIn`(#37, 날짜만 가짐)을 실제 Day1/Day2/Day3에 매핑하는 로직은 이번 범위에 없다.** 그 매핑에는 Routine의 시작일이 필요한데 `routine`이 아직 구현되지 않아 존재하지 않는다(아래 참고). 매핑 orchestration이 없으니 이 엔진을 호출하는 application/Controller 계층도 아직 없다.
 
 `card`/`routine` 서브도메인은 코드가 없다. 설계는 확정됐지만 엔티티로 아직 옮겨지지 않았다 — 아래 Confirmed Decisions 참고.
 
@@ -93,7 +94,21 @@
 - **같은 날짜에 여러 번 기록하면 마지막 응답으로 덮어쓴다**(F-SQUDJA exceptions: "하루에 여러 번 누르면 마지막 응답으로 덮어쓴다") — 중복 입력을 거절하지 않고 upsert한다. 코드에서는 `CheckInService.record`가 find-or-create 후 `CheckIn.overwrite()`로 구현했다.
 - 건너뛴 날은 별도 처리 없이 그냥 빈 값으로 둔다(독촉 안내 등 없음) — 굳이 "결석" 개념을 저장하지 않는다.
 - 원래 기획상 전제조건은 "3일 루틴을 시작한 상태"이지만, `routine`이 아직 구현 전이라 이번 범위에서는 그 전제조건을 걸지 않고 **Episode 소유 여부만 검증**한다(`EpisodeRepository.findByIdAndAccountId`). Routine이 실제로 구현되면 이 전제조건을 다시 검토한다.
-- 4.2(3일차 판정 분기, 1~2일차 나빠짐 시 즉시 중단 분기 등)는 이번 범위에서 다루지 않는다 — 순수 "날짜별 상태 기록" 저장/조회까지만 구현했다.
+
+**checkin — 4.2(3일차 판정과 분기), 기획에서 확정된 부분(Manyfast F-TWLPPZ)**
+- 최종 판정은 유지/연장/중단 3가지 + 기록 부족 시 보류, 총 4가지로 확정: `Day3Verdict.MAINTAIN`/`EXTEND`/`STOP`/`WITHHELD`.
+- **판정은 3일차 응답을 기준으로 한다.** 1·2일차 응답은 참고용이며 판정 자체를 바꾸지 않는다 — 단, "1일차나 2일차에 나빠졌다가 나오면 3일을 기다리지 않고 즉시 중단 안내로 분기한다"는 별도 확정 예외가 있어, 사실상 **Day1/2/3 어디서든 나빠졌다(WORSE)가 한 번이라도 있으면 STOP**이 된다(두 규칙의 합집합으로 구현).
+- 나빠졌다가 없고 응답이 2일 이하면 판정하지 않고 보류(`WITHHELD`, "판단하기 이릅니다").
+- 나빠졌다가 없고 3일 모두 응답이면 Day3 응답 기준: 좋아졌다 → `MAINTAIN`, 비슷하다 → `EXTEND`.
+- 비슷함(`EXTEND`)의 실제 후속 동작은 "다음 원인 후보로 이동" 또는 "3일 연장 제안" 중 기획에 명시된 대로 상황에 따라 갈리는데, 그 분기 기준(어떤 조건에서 어느 쪽을 택하는지)은 기획에 명시돼 있지 않다 — 이 판단은 Card/Analysis 영역의 몫으로 보고, 이번 엔진은 "연장이 필요한 애매한 상태"라는 뜻의 `EXTEND` 판정까지만 낸다.
+- Day3 판정 결과를 저장해야 한다는 기획 요구가 없어 DB에 저장하지 않는다.
+- Day3 판정을 조회/실행하는 REST API 계약이 기획에 명시돼 있지 않아 Controller/API는 만들지 않았다.
+
+**checkin — 4.2 구현 축소 사유(2026-08-17 정정)**
+- "Day N"이 무엇인지는 F-SQUDJA의 "비교 기준을 어제가 아니라 **시작 시점**으로 고정"이라는 문구가 근거다 — Day1/2/3은 Routine 시작일에 고정된 날짜 슬롯이지, "응답이 들어온 순서"가 아니다. "건너뛴 날은 빈 값으로 둔다"(F-SQUDJA exceptions)도 그 슬롯이 비어있다는 뜻이지, 응답 개수만 세면 된다는 뜻이 아니다.
+- 처음 구현에서는 저장된 `CheckIn`을 `checkInDate` 오름차순으로 정렬해 "N번째 응답 = Day N"으로 간주했는데, 이 대응이 Manyfast에 명시적으로 확정돼 있지 않다는 점과 건너뛴 날이 있으면 실제 Day3가 아닌 응답을 Day3로 오판할 수 있다는 문제가 발견되어(예: 8/1 응답, 8/2 건너뜀, 8/3 응답 후 8/7에 응답이 하나 더 오면 8/7을 "3번째 응답"으로 보고 Day3로 오판) 되돌렸다.
+- 그래서 `Day3JudgmentEngine`은 이미 Day1/Day2/Day3로 정리된 `Day3JudgmentInput`만 받고, "어떤 CheckIn이 몇 일차인지" 판단하는 orchestration(Service/Controller)은 만들지 않았다 — 그 매핑에 필요한 Routine 시작일이 아직 없기 때문이다. `routine`이 구현되면 그 매핑과 이 엔진을 호출하는 계층을 별도로 추가한다.
+- 같은 이유로 "3일 초과 기록은 처음 3건만 본다"는 규칙도 기획에 명시된 바 없어 확정하지 않았다 — 3일 연장 이후의 재판정 방식은 미확정 기능으로 남는다.
 
 **card — 확정된 화면 요구사항**
 - 카드 하단에 근거 출처와 근거가 된 기록 일수(예: "N일치 기록")를 표시한다.
