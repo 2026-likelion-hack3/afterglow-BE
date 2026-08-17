@@ -14,7 +14,7 @@
 | `analysis` | 2.4 통합 분석 | 기획 blocker 전부 해소. **판정 엔진(`CauseAnalysisEngine`/`RuleBasedCauseAnalysisEngine`) 구현 완료** — candidate 수집, 근거 강도, ranking/gap/HOLD/confidence까지 순수 함수로 동작. Vanity/Tracking 실제 데이터 연동(Repository, `EpisodeAnalysisService`, Controller/API, DB 저장)은 두 도메인에 데이터 소스가 생긴 뒤 별도로 진행 — 아래 Confirmed Decisions 참고 |
 | `card` | 3.1, 4.3 | analysis 의존성 및 화면 요구사항 일부 확정 / 미구현 |
 | `routine` | 3.2 | 미구현 |
-| `checkin` | 4.1~4.2 | 미구현 |
+| `checkin` | 4.1~4.2 | **4.1(일일 1탭 체크) 중 "날짜별 상태 기록" 저장/조회 구현 완료.** Routine 연동(3일 루틴 시작 전제조건)과 4.2(3일차 판정 분기)는 Routine이 아직 없어 이번 범위에서 제외 — 아래 Confirmed Decisions 참고 |
 
 ## Planned Features
 
@@ -26,7 +26,7 @@
 
 ## Domain Model
 
-(`intake`/`analysis`만 코드 존재. Episode aggregate는 서브도메인이 공유하므로 `domain/episode/domain`에 위치 — [architecture.md](../architecture.md#episode-하위-패키지-관계) 참고)
+(`intake`/`analysis`/`checkin`만 코드 존재. Episode aggregate는 서브도메인이 공유하므로 `domain/episode/domain`에 위치 — [architecture.md](../architecture.md#episode-하위-패키지-관계) 참고)
 
 - `Episode`: `accountId`, `status`(`SYMPTOM_SELECTED`/`INTAKE_COMPLETED`), `symptom`(`@Embedded`), `intake`(`@Embedded`), `bodyParts`(`@ElementCollection`)
 - `Symptom`: `angle`(0~360, raw), `radius`(0~1, raw), `primarySymptom`(5종: `DRYNESS_TIGHTNESS`/`ITCHING`/`STINGING`/`REDNESS`/`TROUBLE`), `severity`(4단계: `NORMAL`/`MILD`/`MODERATE`/`SEVERE`). angle/radius로부터 primarySymptom/severity를 서버가 재계산하지 않는다 — FE가 확정해서 보낸 값을 그대로 저장한다.
@@ -35,8 +35,9 @@
   - `CauseAnalysisEngine`(interface) / `RuleBasedCauseAnalysisEngine`(구현체) — `AnalysisInput` → `AnalysisResult`.
   - 입력: `AnalysisInput`(analysisDate + `ProductCandidateInput`/`CombinationCandidateInput`/`ObservationCandidateInput`×2(수면/날씨)), 각 후보는 `RecordCoverage`(최초 기록일)를 갖는다.
   - 출력: `AnalysisResult`(정렬된 `CandidateResult` 목록, `CandidateExclusion` 목록, hold 여부, topCandidate, `Confidence`). `topCandidate`/`confidence`는 "최종 선택된 원인"을 뜻하며 `candidates.get(0)`(정렬상 1번째)과는 다르다 — same-type tie로 HOLD면 둘 다 null이다(이 불변식은 `AnalysisResult`의 compact constructor가 강제한다). 게이트에서 제외된 후보는 `candidates`가 아니라 `exclusions`(`CandidateExclusion`: type + `ExclusionReason`(`NO_TARGET`/`INSUFFICIENT_RECORDS`) + 식별자)에 남는다. `CandidateResult`는 `CandidateType`/`EvidenceStrength`/`Evidence`(sealed: `TimingEvidence`/`CombinationEvidence`/`FrequencyEvidence`)로 구성.
+- `checkin`은 `CheckIn` 엔티티(`domain.episode.checkin.domain`, checkin 서브도메인 고유 데이터라 공유 위치가 아님)로 구현했다: `episodeId`(값 참조, FK 없음), `checkInDate`, `status`(`CheckInStatus`: `IMPROVED`/`SAME`/`WORSE`). `episodeId`+`checkInDate` UNIQUE(DB 제약 포함). `overwrite(status)`로 같은 날짜 재기록 시 값을 덮어쓴다(Confirmed Decisions 참고).
 
-`card` 이후 서브도메인은 코드가 없다. 설계는 확정됐지만 엔티티로 아직 옮겨지지 않았다 — 아래 Confirmed Decisions 참고.
+`card`/`routine` 서브도메인은 코드가 없다. 설계는 확정됐지만 엔티티로 아직 옮겨지지 않았다 — 아래 Confirmed Decisions 참고.
 
 ## Dependencies
 
@@ -86,6 +87,13 @@
   - 수면 / 날씨 → 빈도형(frequency) evidence: 관찰 횟수, 전체 횟수
   - 제품 조합 → combination evidence(`CombinationEvidence`: 충돌 태그 쌍 + 배치 방식) 구조 확정(2026-08-16, 아래 코드 구조 결정 참고).
   - 다만 근거 문장을 Backend가 완성 문장으로 내려줄지, Frontend가 구조화된 evidence로 문장을 조립할지는 Backend/API Contract 결정 사항으로 남겨둔다(기획 확인 대상 아님).
+
+**checkin — 4.1(일일 1탭 체크), 기획에서 확정된 부분(Manyfast F-SQUDJA)**
+- 응답값은 3단계(`IMPROVED`/`SAME`/`WORSE`, "처음 시작했을 때와 비교해" 좋아졌다/비슷하다/나빠졌다)로 확정.
+- **같은 날짜에 여러 번 기록하면 마지막 응답으로 덮어쓴다**(F-SQUDJA exceptions: "하루에 여러 번 누르면 마지막 응답으로 덮어쓴다") — 중복 입력을 거절하지 않고 upsert한다. 코드에서는 `CheckInService.record`가 find-or-create 후 `CheckIn.overwrite()`로 구현했다.
+- 건너뛴 날은 별도 처리 없이 그냥 빈 값으로 둔다(독촉 안내 등 없음) — 굳이 "결석" 개념을 저장하지 않는다.
+- 원래 기획상 전제조건은 "3일 루틴을 시작한 상태"이지만, `routine`이 아직 구현 전이라 이번 범위에서는 그 전제조건을 걸지 않고 **Episode 소유 여부만 검증**한다(`EpisodeRepository.findByIdAndAccountId`). Routine이 실제로 구현되면 이 전제조건을 다시 검토한다.
+- 4.2(3일차 판정 분기, 1~2일차 나빠짐 시 즉시 중단 분기 등)는 이번 범위에서 다루지 않는다 — 순수 "날짜별 상태 기록" 저장/조회까지만 구현했다.
 
 **card — 확정된 화면 요구사항**
 - 카드 하단에 근거 출처와 근거가 된 기록 일수(예: "N일치 기록")를 표시한다.
