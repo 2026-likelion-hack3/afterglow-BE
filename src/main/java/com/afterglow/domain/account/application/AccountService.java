@@ -93,13 +93,21 @@ public class AccountService {
 
 	/**
 	 * 계정을 삭제하고 다른 도메인에 AccountDeletedEvent를 발행한다 — Account는 누가 어떻게 정리하는지 알지
-	 * 못하고, 각 도메인이 자기 데이터를 정리한다(현재는 onboarding만 구독). 삭제와 이벤트 발행이 하나의
-	 * 트랜잭션 안에서 이뤄져야 리스너가 실패했을 때 계정 삭제까지 함께 롤백되므로 @Transactional을 둔다.
+	 * 못하고, 각 도메인이 자기 데이터를 정리한다(onboarding, episode+checkin이 구독). 삭제와 이벤트 발행이
+	 * 하나의 트랜잭션 안에서 이뤄져야 리스너가 실패했을 때 계정 삭제까지 함께 롤백되므로 @Transactional을 둔다.
+	 *
+	 * <p>{@code delete()} 직후 {@code flush()}를 명시적으로 호출한다(Issue #32) — 그래야 실제 DELETE가
+	 * BEFORE_COMMIT 리스너 실행 전에 동기적으로 나가서, 같은 계정으로 동시에 Episode를 생성하려는 트랜잭션의
+	 * row lock(`AccountRepository.findByIdForUpdate`)과 여기서 진짜로 직렬화된다. flush를 생략하면
+	 * Hibernate가 물리 커밋 시점까지 DELETE를 미뤄버려(Spring이 기본적으로 커밋 전 자동 flush하지 않음)
+	 * cleanup 리스너가 그 사이에 동시-커밋된 Episode를 못 보고 지나칠 수 있다(자세한 근거는
+	 * {@link AccountRepository#flush()} 참고).
 	 */
 	@Transactional
 	public void deleteAccount(Long accountId) {
 		Account account = getAccount(accountId);
 		accountRepository.delete(account);
+		accountRepository.flush();
 		eventPublisher.publishEvent(new AccountDeletedEvent(accountId));
 	}
 

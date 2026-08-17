@@ -10,6 +10,10 @@ public interface EpisodeRepository {
 
 	Optional<Episode> findByIdAndAccountId(Long id, Long accountId);
 
+	List<Episode> findByAccountId(Long accountId);
+
 	List<Episode> findByAccountIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtAsc(
 			Long accountId, LocalDateTime from, LocalDateTime toExclusive);
+
+	void deleteByAccountId(Long accountId);
 }

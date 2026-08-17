@@ -1,5 +1,6 @@
 package com.afterglow.domain.episode.intake.api;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -47,6 +48,19 @@ class EpisodeControllerTest {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(objectMapper.writeValueAsString(new SymptomRequest(90.0, 0.5, PrimarySymptom.REDNESS, Severity.MODERATE))))
 				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void 삭제된_계정으로_에피소드를_생성하면_404를_받는다() throws Exception {
+		String token = createAnonymousAccountToken();
+		mockMvc.perform(delete("/api/accounts/me").header("Authorization", "Bearer " + token))
+				.andExpect(status().isNoContent());
+
+		mockMvc.perform(post("/api/episodes")
+						.header("Authorization", "Bearer " + token)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(new SymptomRequest(90.0, 0.5, PrimarySymptom.REDNESS, Severity.MODERATE))))
+				.andExpect(status().isNotFound());
 	}
 
 	@Test
