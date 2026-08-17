@@ -11,7 +11,7 @@ class AnalysisResultTest {
 
 	private static final CandidateResult PRODUCT_STRONG =
 			new CandidateResult(CandidateType.PRODUCT, EvidenceStrength.STRONG,
-					new TimingEvidence(1L, java.time.LocalDate.of(2026, 8, 1), java.time.LocalDate.of(2026, 8, 10)));
+					new TimingEvidence(1L, java.time.LocalDate.of(2026, 8, 1), java.time.LocalDate.of(2026, 8, 10)), 9L);
 
 	@Test
 	void hold_결과는_topCandidate와_confidence가_항상_없다() {

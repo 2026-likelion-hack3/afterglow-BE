@@ -434,4 +434,57 @@ class RuleBasedCauseAnalysisEngineTest {
 				.containsExactlyInAnyOrder(CandidateType.PRODUCT, CandidateType.COMBINATION, CandidateType.SLEEP, CandidateType.WEATHER);
 		assertThat(result.exclusions()).allMatch(e -> e.reason() == ExclusionReason.NO_TARGET);
 	}
+
+	// ------------------------------------------------------------------
+	// CandidateResult.coverageDays (Result Card용, #41) — 기존 7-day gate/strength/ranking 판정에는
+	// 영향을 주지 않는 추가 필드다.
+	// ------------------------------------------------------------------
+
+	@Test
+	void product_후보의_coverageDays가_보존된다() {
+		RecordCoverage coverage = new RecordCoverage(ANALYSIS_DATE.minusDays(9));
+		ProductCandidateInput product = new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, coverage);
+
+		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(product), List.of(), null, null));
+
+		assertThat(result.candidates().get(0).coverageDays()).isEqualTo(10L);
+	}
+
+	@Test
+	void combination_후보의_coverageDays가_보존된다() {
+		RecordCoverage coverage = new RecordCoverage(ANALYSIS_DATE.minusDays(9));
+		CombinationCandidateInput combination = new CombinationCandidateInput("RETINOL", "ACID", ConflictPlacement.SAME_TIME_SLOT, coverage);
+
+		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(), List.of(combination), null, null));
+
+		assertThat(result.candidates().get(0).coverageDays()).isEqualTo(10L);
+	}
+
+	@Test
+	void sleep_후보의_coverageDays가_보존된다() {
+		RecordCoverage coverage = new RecordCoverage(ANALYSIS_DATE.minusDays(9));
+		ObservationCandidateInput sleep = new ObservationCandidateInput(10, 7, coverage);
+
+		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(), List.of(), sleep, null));
+
+		assertThat(result.candidates().get(0).coverageDays()).isEqualTo(10L);
+	}
+
+	@Test
+	void weather_후보의_coverageDays가_보존된다() {
+		RecordCoverage coverage = new RecordCoverage(ANALYSIS_DATE.minusDays(9));
+		ObservationCandidateInput weather = new ObservationCandidateInput(10, 7, coverage);
+
+		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(), List.of(), null, weather));
+
+		assertThat(result.candidates().get(0).coverageDays()).isEqualTo(10L);
+	}
+
+	@Test
+	void coverageDays_추가는_기존_strength_판정에_영향을_주지_않는다() {
+		AnalysisResult result = analyzeSingleProduct(SYMPTOM_START.minusDays(10), 1);
+
+		assertThat(result.candidates().get(0).strength()).isEqualTo(EvidenceStrength.STRONG);
+		assertThat(result.candidates().get(0).coverageDays()).isEqualTo(7L);
+	}
 }
