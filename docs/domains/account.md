@@ -31,7 +31,7 @@
 - JWT는 stateless, refresh token 없이 access token 하나만 사용.
 - 이메일 발송은 프로파일별로 구현체가 갈린다: local/test는 `LoggingEmailSender`(로그만 남김), prod는 `SesEmailSender`(AWS SES, EC2 IAM role 자격증명 체인 사용, 키 하드코딩 없음).
 - SES 발송 실패는 `EMAIL_SEND_FAILED`(503)로 변환하고, AWS 원문 메시지는 응답에 노출하지 않는다. 원인 로그는 이메일을 마스킹해서 남긴다.
-- 계정 삭제는 하드 삭제. 다른 도메인이 실제로 accountId를 참조하는 데이터를 쌓기 시작하기 전까지는 cascade 정리 로직을 만들지 않는다.
+- 계정 삭제는 하드 삭제. `AccountService.deleteAccount`가 삭제와 같은 트랜잭션 안에서 `AccountDeletedEvent`를 발행하고(`ApplicationEventPublisher`), 각 도메인이 자기 데이터를 알아서 정리한다 — Account는 누가 구독하는지 모른다. 현재 구독자: `domain.onboarding`(Onboarding row), `domain.episode`(계정 소유 Episode + 그 CheckIn, Issue #32). 두 리스너 모두 `@TransactionalEventListener(phase = BEFORE_COMMIT)`을 써서 cleanup 실패 시 계정 삭제까지 롤백되게 한다 — Account는 accountId 참조 데이터를 갖는 다른 도메인의 Repository를 직접 참조하지 않는다.
 
 ## Pending Decisions
 

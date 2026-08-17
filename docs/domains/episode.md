@@ -56,6 +56,7 @@
 **intake (구현 완료)**
 - Episode aggregate(`Episode`, `EpisodeStatus` 등)는 `domain.episode.domain`(공유 위치)에 둔다.
 - 증상은 5개로 구분한다. 명세의 "표시: 6개 항목" 문구와 "데이터: 5개 증상 구간" 문구가 서로 다른데, 데이터 정의 기준으로 5개로 구현했다. "6개" 문구 쪽은 기획 확인이 필요하다.
+- **Account 삭제 lifecycle 정합성(2026-08-17, Issue #32)**: `EpisodeAccountDeletedListener`(`domain.episode.application`, Onboarding과 동일하게 `@TransactionalEventListener(BEFORE_COMMIT)`)가 `AccountDeletedEvent`를 구독해 그 계정 소유 Episode와, 그 Episode들의 CheckIn(`episodeId` 값 참조라 FK cascade가 없어 Episode보다 먼저 지운다)을 같은 트랜잭션에서 정리한다. `EpisodeService.createEpisode`는 `submitIntake`와 달리 아직 episodeId가 없어 ownership lookup으로 보호할 수 없으므로, `AccountRepository`로 계정 존재를 직접 확인한 뒤 생성한다(삭제된 계정의 유효한 JWT로 새 Episode 생성 차단). `submitIntake`/CheckIn API는 기존 `findByIdAndAccountId` ownership lookup만으로 이미 충분해 — cleanup 이후 해당 Episode 자체가 없으므로 — 추가로 손대지 않았다. Analysis/Card/Day3 판정은 DB에 저장하지 않으므로 cleanup 대상이 아니다.
 
 **analysis/card — domain 경계**
 - `analysis`(2.4)는 원인 후보 순위, 확신 단계, 근거 객체(evidence)를 산출하는 것까지가 책임이다. 그 산출물을 소비해 사용자에게 보여줄 결과 카드 3장을 만드는 것은 `card`(3.1/4.3)의 책임이며, `card`의 선행조건은 "통합 분석 완료"다.
