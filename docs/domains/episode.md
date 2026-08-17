@@ -12,7 +12,7 @@
 |---|---|---|
 | `intake` | 2.1~2.3 (사진 촬영 제외) | **구현 완료** |
 | `analysis` | 2.4 통합 분석 | 기획 blocker 전부 해소. **판정 엔진(`CauseAnalysisEngine`/`RuleBasedCauseAnalysisEngine`) 구현 완료** — candidate 수집, 근거 강도, ranking/gap/HOLD/confidence까지 순수 함수로 동작. Vanity/Tracking 실제 데이터 연동(Repository, `EpisodeAnalysisService`, Controller/API, DB 저장)은 두 도메인에 데이터 소스가 생긴 뒤 별도로 진행 — 아래 Confirmed Decisions 참고 |
-| `card` | 3.1, 4.3 | analysis 의존성 및 화면 요구사항 일부 확정 / 미구현 |
+| `card` | 3.1, 4.3 | **`AnalysisResult` → 결과 카드 3장을 조립하는 순수 로직(`ResultCardAssembler`) 구현 완료.** 실제 제품명/이미지(Vanity), 이야기 진입점 개수(Story), Controller/API/DB 저장은 이번 범위 밖 — 아래 Confirmed Decisions 참고 |
 | `routine` | 3.2 | 미구현 |
 | `checkin` | 4.1~4.2 | **4.1(일일 1탭 체크) "날짜별 상태 기록" 저장/조회 구현 완료. 4.2(3일차 판정)는 순수 판정 규칙(`Day3JudgmentEngine`)만 구현 완료.** 저장된 CheckIn을 실제 Day1/Day2/Day3에 매핑하는 orchestration은 `routine`의 시작일이 있어야 가능해 아직 없음(아래 Confirmed Decisions 참고) — Routine 구현 후 별도 진행 |
 
@@ -34,11 +34,12 @@
 - `analysis`는 엔티티가 아니라 순수 판정 엔진이다(DB 저장 없음, `domain.episode.analysis.domain` 패키지):
   - `CauseAnalysisEngine`(interface) / `RuleBasedCauseAnalysisEngine`(구현체) — `AnalysisInput` → `AnalysisResult`.
   - 입력: `AnalysisInput`(analysisDate + `ProductCandidateInput`/`CombinationCandidateInput`/`ObservationCandidateInput`×2(수면/날씨)), 각 후보는 `RecordCoverage`(최초 기록일)를 갖는다.
-  - 출력: `AnalysisResult`(정렬된 `CandidateResult` 목록, `CandidateExclusion` 목록, hold 여부, topCandidate, `Confidence`). `topCandidate`/`confidence`는 "최종 선택된 원인"을 뜻하며 `candidates.get(0)`(정렬상 1번째)과는 다르다 — same-type tie로 HOLD면 둘 다 null이다(이 불변식은 `AnalysisResult`의 compact constructor가 강제한다). 게이트에서 제외된 후보는 `candidates`가 아니라 `exclusions`(`CandidateExclusion`: type + `ExclusionReason`(`NO_TARGET`/`INSUFFICIENT_RECORDS`) + 식별자)에 남는다. `CandidateResult`는 `CandidateType`/`EvidenceStrength`/`Evidence`(sealed: `TimingEvidence`/`CombinationEvidence`/`FrequencyEvidence`)로 구성.
+  - 출력: `AnalysisResult`(정렬된 `CandidateResult` 목록, `CandidateExclusion` 목록, hold 여부, topCandidate, `Confidence`). `topCandidate`/`confidence`는 "최종 선택된 원인"을 뜻하며 `candidates.get(0)`(정렬상 1번째)과는 다르다 — same-type tie로 HOLD면 둘 다 null이다(이 불변식은 `AnalysisResult`의 compact constructor가 강제한다). 게이트에서 제외된 후보는 `candidates`가 아니라 `exclusions`(`CandidateExclusion`: type + `ExclusionReason`(`NO_TARGET`/`INSUFFICIENT_RECORDS`) + 식별자)에 남는다. `CandidateResult`는 `CandidateType`/`EvidenceStrength`/`Evidence`(sealed: `TimingEvidence`/`CombinationEvidence`/`FrequencyEvidence`)/`coverageDays`(2026-08-17 추가, 아래 card 참고)로 구성.
+- `card`는 엔티티가 아니라 순수 조립 로직이다(DB 저장 없음, `domain.episode.card.domain` 패키지): `ResultCardAssembler.assemble(AnalysisResult)` → `ResultCardResult`(hold 여부, `ResultCardHoldReason`, `Confidence`, 항상 3장인 `ResultCard` 목록). `ResultCard`는 `type`(`ResultCardType`)/`causeType`/`evidence`(기존 Analysis `Evidence` 재사용)/`coverageDays`로 구성 — 실제 문장(제목/이유 한 줄)은 만들지 않는다(아래 Confirmed Decisions 참고).
 - `checkin`은 `CheckIn` 엔티티(`domain.episode.checkin.domain`, checkin 서브도메인 고유 데이터라 공유 위치가 아님)로 구현했다: `episodeId`(값 참조, FK 없음), `checkInDate`, `status`(`CheckInStatus`: `IMPROVED`/`SAME`/`WORSE`). `episodeId`+`checkInDate` UNIQUE(DB 제약 포함). `overwrite(status)`로 같은 날짜 재기록 시 값을 덮어쓴다(Confirmed Decisions 참고).
 - 4.2 판정은 엔티티/DB 저장 없이 순수 함수로 구현했다: `Day3JudgmentEngine`(`Day3JudgmentInput` → `Day3JudgmentResult`, Repository/Spring 의존 없음) + `Day3JudgmentResult`(`Day3Verdict`: `WITHHELD`/`MAINTAIN`/`EXTEND`/`STOP`). `Day3JudgmentInput`은 `day1Status`/`day2Status`/`day3Status`(각 nullable, 건너뛴 날)를 이미 정리된 값으로 받는다 — **저장된 `CheckIn`(#37, 날짜만 가짐)을 실제 Day1/Day2/Day3에 매핑하는 로직은 이번 범위에 없다.** 그 매핑에는 Routine의 시작일이 필요한데 `routine`이 아직 구현되지 않아 존재하지 않는다(아래 참고). 매핑 orchestration이 없으니 이 엔진을 호출하는 application/Controller 계층도 아직 없다.
 
-`card`/`routine` 서브도메인은 코드가 없다. 설계는 확정됐지만 엔티티로 아직 옮겨지지 않았다 — 아래 Confirmed Decisions 참고.
+`routine` 서브도메인은 코드가 없다. 설계는 확정됐지만 아직 옮겨지지 않았다 — 아래 Confirmed Decisions 참고.
 
 ## Dependencies
 
@@ -110,11 +111,17 @@
 - 그래서 `Day3JudgmentEngine`은 이미 Day1/Day2/Day3로 정리된 `Day3JudgmentInput`만 받고, "어떤 CheckIn이 몇 일차인지" 판단하는 orchestration(Service/Controller)은 만들지 않았다 — 그 매핑에 필요한 Routine 시작일이 아직 없기 때문이다. `routine`이 구현되면 그 매핑과 이 엔진을 호출하는 계층을 별도로 추가한다.
 - 같은 이유로 "3일 초과 기록은 처음 3건만 본다"는 규칙도 기획에 명시된 바 없어 확정하지 않았다 — 3일 연장 이후의 재판정 방식은 미확정 기능으로 남는다.
 
-**card — 확정된 화면 요구사항**
-- 카드 하단에 근거 출처와 근거가 된 기록 일수(예: "N일치 기록")를 표시한다.
+**card — 확정된 화면 요구사항(Manyfast F-HGUJDZ, 통합 분석 updateData)**
+- 카드는 항상 3장: (1) 원인 후보 관련 카드 (2) 오늘 사용할 것 (3) 병원 방문 기준.
 - 세 번째 카드(병원 권유)는 원인 후보/확신 단계와 무관하게 **항상 표시**한다.
-- 판단 보류 상태("아직 판단하기 이릅니다")일 때는 첫 번째 카드(중단 권유)를 보류 안내로 대체하고, 병원 카드는 그대로 유지한다. 보류여도 보류 사유·오늘 해볼 일반 조언·병원 방문 기준 세 가지는 항상 내려준다.
-- "진단이 아닙니다" 고지를 항상 노출하고, 점수나 등급은 표시하지 않는다.
+- 판단 보류 상태("아직 판단하기 이릅니다")일 때는 첫 번째 카드(중단 권유)를 보류 안내로 대체하고, 병원 카드는 그대로 유지한다. 보류여도 보류 사유·오늘 해볼 일반 조언·병원 방문 기준 세 가지는 항상 내려준다(통합 분석 updateData exceptions).
+- **원인 후보가 WEATHER면 멈출 대상이 없으므로 첫 번째 카드가 "오늘 중단할 것"(`DISCONTINUE`) 대신 "오늘 더 해줄 것"(`DO_MORE_TODAY`)으로 바뀐다** — 통합 분석 updateData exceptions: "날씨가 1순위면 멈출 대상이 없으므로 중단할 것 카드 대신 오늘 더 해줄 것 카드로 바꾼다."
+- **"N일치 기록" = `RecordCoverage.coverageDays`(2026-08-17 확정)** — Analysis의 7-day gate에 쓰는 그 calendar coverage 값과 동일하다. `FrequencyEvidence.observationCount`/`matchedObservationCount`(확신 단계 문장에 쓰는 "N번 중 M번" 관찰 횟수)와는 **서로 다른 숫자**이며 섞지 않는다 — 이번에 `CandidateResult`에 `coverageDays` 필드를 추가해 이 값을 노출하도록 보완했다(7-day gate/strength/ranking/gap/HOLD/confidence/exclusions 규칙 자체는 변경 없음).
+- **보류 사유는 `CandidateExclusion`으로 구분한다(2026-08-17 확정, 구현 범위)**: 후보 목록이 비어 있고(모든 타입 제외) 그중 하나라도 `INSUFFICIENT_RECORDS`면 "기록이 더 모이면" 류의 안내, 전부 `NO_TARGET`이면 그런 약속을 하지 않는다(통합 분석 updateData exceptions). 후보가 있었지만 근거 부족/동점/gap으로 보류된 경우는 별도 사유(`INCONCLUSIVE_EVIDENCE`)로 구분한다 — 정확한 문구는 기획에 없어 만들지 않았다.
+- 카드 자체에는 별도 태그 체계가 없다(2026-08-17 확정, 아래 Pending Decisions 정정 참고) — dataSpec은 "제목/대상 제품 또는 기준/이유 한 줄/근거 출처"뿐이다. "근거 출처"는 기존 `CandidateType`/`Evidence`로 표현되며 새 타입 체계가 필요 없다.
+- 두 번째 카드(오늘 사용할 것)는 보유 제품 "전체" 목록에서 구성해야 하는데 이건 Vanity 데이터가 있어야 가능하다 — 이번 범위에서는 카드 자리(`CONTINUE_USE` 타입)만 만들고 내용은 비워둔다.
+- "진단이 아닙니다" 고지를 항상 노출하고, 점수나 등급은 표시하지 않는다(UI 고정 문구·규칙이라 backend 데이터 모델에 넣지 않았다).
+- 제목/이유 한 줄 같은 실제 문장은 이번에 만들지 않는다 — 제품명(Vanity), 증상명(현재 `ResultCardAssembler` 입력이 `AnalysisResult`뿐이라 Episode/Symptom 미포함) 등 문장 조립에 필요한 데이터가 부족하다. 대신 구조화된 근거(`causeType`/`evidence`/`coverageDays`)만 반환한다.
 
 **card ↔ story 연동 — 확정된 부분**
 - 결과 카드 화면과 3일차 판정 화면 하단에, 현재 에피소드 증상과 같은 태그의 story 글 개수를 보여주는 진입점 버튼을 노출한다(예: "같은 가려움을 겪은 분들의 이야기 12개"). 카드 3장 영역과는 시각적으로 분리한다.
@@ -137,8 +144,8 @@
 
 **기획 확인 필요 (아직 열려 있는 질문)**
 
-- 카드에 표시되는 "보습", "세라마이드" 등 태그가 `vanity`의 `InteractionTag`(5종)와 별도 체계(`functionTags`/`keyIngredients`)인지, 그렇다면 어떻게 조합해 내려줄지
-- Figma 결과 화면의 "좋아졌다" 버튼이 실제로 어떤 행동을 트리거하는지 — 3일차 판정의 "좋아짐"과 동일한 행동인지, 결과 직후 별도 피드백인지. 현재 기능명세(결과 카드 3장)에는 이 버튼에 대응하는 요구사항이 없다.
+- **(2026-08-17 정정)** ~~카드에 표시되는 "보습", "세라마이드" 등 태그가 vanity의 InteractionTag(5종)와 별도 체계인지~~ — 재확인 결과 이건 Result Card(F-HGUJDZ)가 아니라 **"빈 범주 안내"라는 별개 기능**의 내용이었다(범주: 진정/장벽 강화/보습/자외선 차단/각질 관리 — Vanity `InteractionTag`와는 확실히 다른 체계). Result Card 자체의 dataSpec에는 태그 필드가 없다. "빈 범주 안내"는 이번 범위 밖이며, 그 기능을 다룰 때 다시 확인한다.
+- Figma 결과 화면의 "좋아졌다" 버튼이 실제로 어떤 행동을 트리거하는지 — **여전히 미확정.** "좋아졌다"라는 단어는 Manyfast 전체에서 Daily Check-in(F-SQUDJA)과 Day3 판정(F-TWLPPZ) 설명에만 등장하고, Result Card(F-HGUJDZ)의 action/outcome/rules 어디에도 카드 화면 자체에 이런 버튼이 있다는 문구가 없다(카드 안에 둘 수 있는 보조 버튼은 "이야기로 이동" 버튼뿐이라고 명시됨). 이번 Result Card 구현에서도 관련 API/Check-in 연결/navigation을 구현하지 않았다.
 
 **Implementation Decisions Pending (기획 blocker 아님 — backend 구현 시점에 정할 것)**
 

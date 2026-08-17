@@ -63,7 +63,8 @@ public final class RuleBasedCauseAnalysisEngine implements CauseAnalysisEngine {
 			candidates.add(new CandidateResult(
 					CandidateType.PRODUCT,
 					productStrength(product),
-					new TimingEvidence(product.productId(), product.usageStartDate(), product.symptomStartDate())));
+					new TimingEvidence(product.productId(), product.usageStartDate(), product.symptomStartDate()),
+					product.coverage().coverageDays(input.analysisDate())));
 		}
 	}
 
@@ -100,7 +101,8 @@ public final class RuleBasedCauseAnalysisEngine implements CauseAnalysisEngine {
 			candidates.add(new CandidateResult(
 					CandidateType.COMBINATION,
 					strength,
-					new CombinationEvidence(combo.tagA(), combo.tagB(), combo.conflictPlacement())));
+					new CombinationEvidence(combo.tagA(), combo.tagB(), combo.conflictPlacement()),
+					combo.coverage().coverageDays(input.analysisDate())));
 		}
 	}
 
@@ -118,7 +120,8 @@ public final class RuleBasedCauseAnalysisEngine implements CauseAnalysisEngine {
 		candidates.add(new CandidateResult(
 				type,
 				observationStrength(observation),
-				new FrequencyEvidence(observation.observationCount(), observation.matchedObservationCount())));
+				new FrequencyEvidence(observation.observationCount(), observation.matchedObservationCount()),
+				observation.coverage().coverageDays(analysisDate)));
 	}
 
 	/**
