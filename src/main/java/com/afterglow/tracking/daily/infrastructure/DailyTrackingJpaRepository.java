@@ -1,6 +1,7 @@
 package com.afterglow.tracking.daily.infrastructure;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,5 +17,11 @@ public interface DailyTrackingJpaRepository
 	Optional<DailyTracking> findByAccountIdAndRecordedDate(
 		Long accountId,
 		LocalDate recordedDate
+	);
+
+	List<DailyTracking> findByAccountIdAndRecordedDateBetween(
+		Long accountId,
+		LocalDate from,
+		LocalDate to
 	);
 }

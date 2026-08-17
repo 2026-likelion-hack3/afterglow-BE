@@ -1,6 +1,7 @@
 package com.afterglow.tracking.daily.application;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -76,5 +77,17 @@ public class DailyTrackingService {
 			.findByAccountIdAndRecordedDate(accountId, recordedDate)
 			.map(DailyTrackingResponse::new)
 			.orElse(null);
+	}
+
+	public List<DailyTrackingResponse> getDailyTrackings(
+		Long accountId,
+		LocalDate from,
+		LocalDate to) {
+
+		return dailyTrackingRepository
+			.findByAccountIdAndRecordedDateBetween(accountId, from, to)
+			.stream()
+			.map(DailyTrackingResponse::new)
+			.toList();
 	}
 }

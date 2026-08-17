@@ -1,6 +1,7 @@
 package com.afterglow.tracking.daily.api;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -8,6 +9,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.afterglow.common.security.OpenApiConfig;
@@ -56,5 +58,17 @@ public class DailyTrackingController {
 		}
 
 		return ResponseEntity.ok(response);
+	}
+
+	@GetMapping("/range")
+	public ResponseEntity<List<DailyTrackingResponse>> getDailyTrackings(
+		@AuthenticationPrincipal Long accountId,
+		@RequestParam LocalDate from,
+		@RequestParam LocalDate to) {
+
+		List<DailyTrackingResponse> responses =
+			dailyTrackingService.getDailyTrackings(accountId, from, to);
+
+		return ResponseEntity.ok(responses);
 	}
 }

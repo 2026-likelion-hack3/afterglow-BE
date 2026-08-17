@@ -150,4 +150,64 @@ class DailyTrackingControllerTest {
 		JsonNode json = objectMapper.readTree(response);
 		return json.get("accessToken").asText();
 	}
+	@Test
+	void 과거_날짜의_기록을_나중에_입력할_수_있다() throws Exception {
+		String token = createAnonymousAccountToken();
+
+		DailyTrackingRequest request = new DailyTrackingRequest(
+			LocalDate.of(2026, 8, 10),
+			com.afterglow.tracking.daily.domain.SleepLevel.POOR,
+			com.afterglow.tracking.daily.domain.ConditionLevel.BAD,
+			37.5665,
+			126.9780
+		);
+
+		mockMvc.perform(post("/api/tracking/daily")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(request)))
+			.andExpect(status().isNoContent());
+	}
+
+	@Test
+	void 기간을_지정하면_해당_기간의_기록을_조회할_수_있다() throws Exception {
+		String token = createAnonymousAccountToken();
+
+		DailyTrackingRequest firstRequest = new DailyTrackingRequest(
+			LocalDate.of(2026, 8, 10),
+			com.afterglow.tracking.daily.domain.SleepLevel.POOR,
+			com.afterglow.tracking.daily.domain.ConditionLevel.BAD,
+			37.5665,
+			126.9780
+		);
+
+		DailyTrackingRequest secondRequest = new DailyTrackingRequest(
+			LocalDate.of(2026, 8, 12),
+			com.afterglow.tracking.daily.domain.SleepLevel.WELL,
+			com.afterglow.tracking.daily.domain.ConditionLevel.GOOD,
+			37.5665,
+			126.9780
+		);
+
+		mockMvc.perform(post("/api/tracking/daily")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(firstRequest)))
+			.andExpect(status().isNoContent());
+
+		mockMvc.perform(post("/api/tracking/daily")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(secondRequest)))
+			.andExpect(status().isNoContent());
+
+		mockMvc.perform(get("/api/tracking/daily/range")
+				.header("Authorization", "Bearer " + token)
+				.param("from", "2026-08-10")
+				.param("to", "2026-08-12"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.length()").value(2))
+			.andExpect(jsonPath("$[0].recordedDate").value("2026-08-10"))
+			.andExpect(jsonPath("$[1].recordedDate").value("2026-08-12"));
+	}
 }
