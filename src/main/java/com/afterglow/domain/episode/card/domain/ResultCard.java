@@ -13,7 +13,10 @@ import com.afterglow.domain.episode.analysis.domain.Evidence;
  * @param causeType     이 카드가 참조하는 원인 후보 타입 — 후보를 참조하지 않는 카드(CONTINUE_USE,
  *                      HOSPITAL_VISIT, WITHHELD)는 null
  * @param evidence      원인 후보의 근거(기존 Analysis {@link Evidence} 재사용) — causeType이 null이면 null
- * @param coverageDays  근거가 된 기록 일수("N일치 기록") — causeType이 null이면 null
+ * @param coverageDays  근거가 된 기록 일수("N일치 기록") — causeType이 null이면 null. causeType이
+ *                      PRODUCT/COMBINATION일 때도 null이다(coverage 게이트가 수면/날씨 전용이라 그
+ *                      두 타입은 애초에 coverageDays 자체가 없다, 2026-08-18) — 임의 숫자를 만들어
+ *                      채우지 않는다.
  */
 public record ResultCard(ResultCardType type, CandidateType causeType, Evidence evidence, Long coverageDays) {
 }
