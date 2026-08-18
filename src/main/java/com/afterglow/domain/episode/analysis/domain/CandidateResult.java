@@ -11,8 +11,4 @@ package com.afterglow.domain.episode.analysis.domain;
  *                     시작점은 기획에 정의돼 있지 않아, 의미 없는 날짜를 임의로 채우지 않는다.
  */
 public record CandidateResult(CandidateType type, EvidenceStrength strength, Evidence evidence, Long coverageDays) {
-
-	public int score() {
-		return strength.score();
-	}
 }
