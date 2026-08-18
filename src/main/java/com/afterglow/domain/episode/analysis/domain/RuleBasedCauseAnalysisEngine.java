@@ -7,8 +7,8 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * 2026-08-13/2026-08-16 확정 규칙을 그대로 구현한 결정적(pure) 판정 엔진. Repository/Spring Bean/
- * 외부 호출/{@code LocalDateTime.now()}에 의존하지 않는다 — 같은 {@link AnalysisInput}이면 항상 같은
+ * 2026-08-13/2026-08-16/2026-08-19 확정 규칙을 그대로 구현한 결정적(pure) 판정 엔진. Repository/Spring
+ * Bean/외부 호출/{@code LocalDateTime.now()}에 의존하지 않는다 — 같은 {@link AnalysisInput}이면 항상 같은
  * {@link AnalysisResult}를 반환한다.
  */
 public final class RuleBasedCauseAnalysisEngine implements CauseAnalysisEngine {
@@ -20,15 +20,22 @@ public final class RuleBasedCauseAnalysisEngine implements CauseAnalysisEngine {
 	private static final int STRONG_MIN_OBSERVATIONS = 5;
 	private static final int MEDIUM_MIN_OBSERVATIONS = 3;
 	private static final int MEDIUM_MAX_OBSERVATIONS = 4;
-	private static final double HOLD_GAP_THRESHOLD = 0.2;
-	private static final double HIGH_CONFIDENCE_GAP_THRESHOLD = 0.4;
 
 	private static final List<CandidateType> TYPE_PRIORITY =
 			List.of(CandidateType.PRODUCT, CandidateType.COMBINATION, CandidateType.SLEEP, CandidateType.WEATHER);
 
+	/**
+	 * 순위는 점수 격차 계산이 아니라 정렬 규칙이다(Manyfast 통합 분석 F-ZSPZHH 최신 확정, 2026-08-19):
+	 * 1차 근거 강도(강&gt;중&gt;약) → 2차 강도가 같으면 type priority(되돌리기 쉬운 순서) → 3차 type과
+	 * 강도까지 같으면 같은 종류 안의 tie-break(제품=기준일 최근순, 조합=충돌 강도순, 수면/날씨는 후보가
+	 * 타입당 최대 하나뿐이라 같은 타입끼리 동점 자체가 발생하지 않는다). 이 셋을 모두 적용해도 1·2위가
+	 * 구분되지 않으면(comparator가 0을 반환하면) 그건 "정렬 규칙을 끝까지 적용해도 1순위를 가릴 수 없는"
+	 * 상태이며 {@link #rank}에서 HOLD로 처리한다.
+	 */
 	private static final Comparator<CandidateResult> RANKING_ORDER =
-			Comparator.comparingInt(CandidateResult::score).reversed()
-					.thenComparingInt(c -> TYPE_PRIORITY.indexOf(c.type()));
+			Comparator.comparing(CandidateResult::strength)
+					.thenComparingInt(c -> TYPE_PRIORITY.indexOf(c.type()))
+					.thenComparing(RuleBasedCauseAnalysisEngine::compareSameTypeTieBreak);
 
 	@Override
 	public AnalysisResult analyze(AnalysisInput input) {
@@ -141,9 +148,15 @@ public final class RuleBasedCauseAnalysisEngine implements CauseAnalysisEngine {
 	}
 
 	// ------------------------------------------------------------------
-	// ranking → gap → hold → confidence
+	// ranking → hold → confidence
 	// ------------------------------------------------------------------
 
+	/**
+	 * "정렬 규칙을 끝까지 적용해도 1순위를 가릴 수 없으면 보류한다"(F-ZSPZHH 최신 확정) — {@code ranked}는
+	 * 이미 {@link #RANKING_ORDER}로 정렬돼 있으므로, 1위와 2위를 그 순서 그대로 다시 비교해서 0(구분 불가)이
+	 * 나오면 그게 곧 "끝까지 적용해도 못 가른" 상태다. 서로 다른 type끼리는 이미 type priority가 갈라놓으므로
+	 * 여기서 0이 나오는 경우는 실질적으로 같은 type 안에서 강도·tie-break까지 전부 같을 때뿐이다.
+	 */
 	private AnalysisResult rank(List<CandidateResult> ranked, List<CandidateExclusion> exclusions) {
 		if (ranked.isEmpty()) {
 			return AnalysisResult.hold(ranked, exclusions);
@@ -152,33 +165,31 @@ public final class RuleBasedCauseAnalysisEngine implements CauseAnalysisEngine {
 		if (top1.strength() == EvidenceStrength.WEAK) {
 			return AnalysisResult.hold(ranked, exclusions);
 		}
-		if (hasSameTypeTopTie(ranked, top1)) {
+		CandidateResult second = ranked.size() > 1 ? ranked.get(1) : null;
+		if (second != null && RANKING_ORDER.compare(top1, second) == 0) {
 			return AnalysisResult.hold(ranked, exclusions);
 		}
 
-		double gap = ranked.size() == 1
-				? 1.0
-				: (double) (top1.score() - ranked.get(1).score()) / top1.score();
-		if (gap < HOLD_GAP_THRESHOLD) {
-			return AnalysisResult.hold(ranked, exclusions);
-		}
-
-		Confidence confidence = (top1.strength() == EvidenceStrength.STRONG && gap >= HIGH_CONFIDENCE_GAP_THRESHOLD)
+		Confidence confidence = (top1.strength() == EvidenceStrength.STRONG && (second == null || second.strength() == EvidenceStrength.WEAK))
 				? Confidence.HIGH
 				: Confidence.NORMAL;
 		return AnalysisResult.determined(ranked, exclusions, top1, confidence);
 	}
 
 	/**
-	 * top1과 같은 candidate type이면서 점수도 top1과 같은 후보가 2개 이상이면, 그 유형 안에서 우열을 가릴
-	 * 수 없다는 뜻이다. 서로 다른 type 간의 동점은 이미 {@link #RANKING_ORDER}가 type 우선순위로 top1을
-	 * 정했으므로 여기서는 same-type만 본다. 이 경우 top1은 정렬 편의를 위한 임시 값일 뿐 결과에는 반영되지
-	 * 않는다 — HOLD 경로는 topCandidate를 항상 null로 반환한다.
+	 * 같은 type·같은 강도인 두 후보의 3차 tie-break(F-ZSPZHH 최신 확정) — 제품은 기준일(현재는
+	 * {@link ProductCandidateInput#usageStartDate()} 그대로, 추정치 환산은 이번 범위 밖)이 더 최근인 쪽을
+	 * 우선한다. 조합은 충돌 강도({@link ConflictPlacement} 선언 순서: SAME_TIME_SLOT &gt; SPLIT_AM_PM &gt;
+	 * NONE)가 더 센 쪽을 우선한다. 수면/날씨는 {@link AnalysisInput}에 타입당 후보가 최대 하나뿐이라 같은
+	 * type끼리 동점 자체가 나올 수 없으므로 별도 tie-break가 없다 — 명세에도 정의돼 있지 않다.
 	 */
-	private boolean hasSameTypeTopTie(List<CandidateResult> ranked, CandidateResult top1) {
-		long sameTypeTopCount = ranked.stream()
-				.filter(c -> c.type() == top1.type() && c.score() == top1.score())
-				.count();
-		return sameTypeTopCount > 1;
+	private static int compareSameTypeTieBreak(CandidateResult a, CandidateResult b) {
+		return switch (a.type()) {
+			case PRODUCT -> ((TimingEvidence) b.evidence()).usageStartDate()
+					.compareTo(((TimingEvidence) a.evidence()).usageStartDate());
+			case COMBINATION -> ((CombinationEvidence) a.evidence()).conflictPlacement()
+					.compareTo(((CombinationEvidence) b.evidence()).conflictPlacement());
+			case SLEEP, WEATHER -> 0;
+		};
 	}
 }

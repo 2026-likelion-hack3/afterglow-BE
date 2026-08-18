@@ -230,49 +230,100 @@ class RuleBasedCauseAnalysisEngineTest {
 	}
 
 	// ------------------------------------------------------------------
-	// ranking / gap
+	// ranking — strength → type priority → same-type tie-break
+	// (2026-08-19, Manyfast F-ZSPZHH 최신 확정: 점수 격차 계산 폐기, 정렬 규칙으로 대체)
 	// ------------------------------------------------------------------
 
 	@Test
-	void 서로_다른_타입이_3점으로_동점이면_gap이_0이라_HOLD이다() {
-		// PRODUCT(STRONG=3) vs COMBINATION(STRONG=3), 서로 다른 타입 — same-type tie 규칙이 아니라
-		// gap<0.2 규칙으로 HOLD가 되는지를 검증한다.
+	void PRODUCT와_COMBINATION이_같은_강도면_type_priority로_PRODUCT가_선택되고_confidence는_NORMAL이다() {
 		AnalysisResult result = analyzeProductAndCombination(EvidenceStrength.STRONG, EvidenceStrength.STRONG);
 
+		assertThat(result.hold()).isFalse();
+		assertThat(result.topCandidate().type()).isEqualTo(CandidateType.PRODUCT);
+		assertThat(result.confidence()).isEqualTo(Confidence.NORMAL);
+	}
+
+	@Test
+	void COMBINATION과_SLEEP이_같은_강도면_type_priority로_COMBINATION이_선택된다() {
+		CombinationCandidateInput combination = new CombinationCandidateInput("RETINOL", "ACID", ConflictPlacement.SAME_TIME_SLOT);
+		ObservationCandidateInput sleep = new ObservationCandidateInput(10, 7, SUFFICIENT_COVERAGE);
+		AnalysisInput input = new AnalysisInput(ANALYSIS_DATE, List.of(), List.of(combination), sleep, null);
+
+		AnalysisResult result = engine.analyze(input);
+
+		assertThat(result.hold()).isFalse();
+		assertThat(result.topCandidate().type()).isEqualTo(CandidateType.COMBINATION);
+	}
+
+	@Test
+	void SLEEP과_WEATHER가_같은_강도면_type_priority로_SLEEP이_선택된다() {
+		ObservationCandidateInput sleep = new ObservationCandidateInput(10, 7, SUFFICIENT_COVERAGE);
+		ObservationCandidateInput weather = new ObservationCandidateInput(10, 7, SUFFICIENT_COVERAGE);
+		AnalysisInput input = new AnalysisInput(ANALYSIS_DATE, List.of(), List.of(), sleep, weather);
+
+		AnalysisResult result = engine.analyze(input);
+
+		assertThat(result.hold()).isFalse();
+		assertThat(result.topCandidate().type()).isEqualTo(CandidateType.SLEEP);
+	}
+
+	@Test
+	void PRODUCT가_같은_강도로_동점이면_usageStartDate가_최근인_후보가_선택된다() {
+		ProductCandidateInput older = new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1);
+		ProductCandidateInput moreRecent = new ProductCandidateInput(2L, SYMPTOM_START.minusDays(5), SYMPTOM_START, 1);
+		AnalysisInput input = new AnalysisInput(ANALYSIS_DATE, List.of(older, moreRecent), List.of(), null, null);
+
+		AnalysisResult result = engine.analyze(input);
+
+		assertThat(result.hold()).isFalse();
+		assertThat(((TimingEvidence) result.topCandidate().evidence()).productId()).isEqualTo(2L);
+	}
+
+	@Test
+	void PRODUCT가_강도와_usageStartDate까지_같으면_다른_tie_break가_없어_HOLD이다() {
+		ProductCandidateInput productA = new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1);
+		ProductCandidateInput productB = new ProductCandidateInput(2L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1);
+		AnalysisInput input = new AnalysisInput(ANALYSIS_DATE, List.of(productA, productB), List.of(), null, null);
+
+		AnalysisResult result = engine.analyze(input);
+
 		assertThat(result.hold()).isTrue();
+		assertThat(result.topCandidate()).isNull();
+		assertThat(result.confidence()).isNull();
+	}
+
+	/**
+	 * conflictPlacement tie-break(SAME_TIME_SLOT &gt; SPLIT_AM_PM &gt; NONE) 자체가 명시적으로 다른 값을
+	 * 골라내는 케이스는 만들 수 없다 — {@code conflictPlacement}가 strength를 그대로 결정하므로(SAME_TIME_SLOT
+	 * →강, SPLIT_AM_PM→중, NONE→약) "같은 강도인데 conflictPlacement가 다른" 조합 후보는 지금의 강도 계산
+	 * 규칙상 존재할 수 없다. 그래서 tie-break가 "적용됐을 때 다른 값을 고른다"는 것 자체는 이번 테스트로
+	 * 검증하지 않고, 강도와 conflictPlacement가 완전히 같은 두 후보가 tie-break까지 적용해도 못 갈려 HOLD가
+	 * 되는지만 검증한다.
+	 */
+	@Test
+	void COMBINATION이_강도와_conflictPlacement까지_같으면_HOLD이다() {
+		CombinationCandidateInput comboA = new CombinationCandidateInput("RETINOL", "ACID", ConflictPlacement.SAME_TIME_SLOT);
+		CombinationCandidateInput comboB = new CombinationCandidateInput("VITAMIN_C", "HIGH_CONCENTRATION", ConflictPlacement.SAME_TIME_SLOT);
+		AnalysisInput input = new AnalysisInput(ANALYSIS_DATE, List.of(), List.of(comboA, comboB), null, null);
+
+		AnalysisResult result = engine.analyze(input);
+
+		assertThat(result.hold()).isTrue();
+		assertThat(result.topCandidate()).isNull();
+		assertThat(result.confidence()).isNull();
 	}
 
 	@Test
-	void 점수가_3대2면_gap은_0_333이고_HOLD가_아니며_NORMAL이다() {
-		AnalysisResult result = analyzeProductAndCombination(EvidenceStrength.STRONG, EvidenceStrength.MEDIUM);
+	void 다른_타입이_MEDIUM으로_동점이어도_HOLD가_아니라_type_priority로_결정된다() {
+		CombinationCandidateInput combination = new CombinationCandidateInput("RETINOL", "ACID", ConflictPlacement.SPLIT_AM_PM);
+		ObservationCandidateInput sleep = new ObservationCandidateInput(3, 1, SUFFICIENT_COVERAGE);
+		AnalysisInput input = new AnalysisInput(ANALYSIS_DATE, List.of(), List.of(combination), sleep, null);
+
+		AnalysisResult result = engine.analyze(input);
 
 		assertThat(result.hold()).isFalse();
+		assertThat(result.topCandidate().type()).isEqualTo(CandidateType.COMBINATION);
 		assertThat(result.confidence()).isEqualTo(Confidence.NORMAL);
-	}
-
-	@Test
-	void 점수가_3대1이면_gap은_0_667이고_HIGH이다() {
-		AnalysisResult result = analyzeProductAndCombination(EvidenceStrength.STRONG, EvidenceStrength.WEAK);
-
-		assertThat(result.hold()).isFalse();
-		assertThat(result.confidence()).isEqualTo(Confidence.HIGH);
-	}
-
-	@Test
-	void 점수가_2대1이면_gap은_0_5이고_NORMAL이다() {
-		AnalysisResult result = analyzeProductAndCombination(EvidenceStrength.MEDIUM, EvidenceStrength.WEAK);
-
-		assertThat(result.hold()).isFalse();
-		assertThat(result.confidence()).isEqualTo(Confidence.NORMAL);
-	}
-
-	@Test
-	void candidate가_1개면_gap은_1이고_STRONG이면_HIGH이다() {
-		AnalysisResult result = analyzeSingleProduct(SYMPTOM_START.minusDays(10), 1);
-
-		assertThat(result.candidates()).hasSize(1);
-		assertThat(result.hold()).isFalse();
-		assertThat(result.confidence()).isEqualTo(Confidence.HIGH);
 	}
 
 	/** WEAK를 만들기 위해 timing이 어긋난 제품(WEAK) / 충돌 없는 조합(WEAK)을 각각 원하는 강도로 만들어 조합한다. */
@@ -321,38 +372,42 @@ class RuleBasedCauseAnalysisEngineTest {
 		assertThat(result.confidence()).isNull();
 	}
 
+	// ------------------------------------------------------------------
+	// confidence (2026-08-19, Manyfast F-ZSPZHH 최신 확정: "1순위가 강이고 2순위가 약이거나 없으면
+	// 높음이다. 그 외는 보통이다." — top1이 WEAK인 경우는 위에서 이미 HOLD로 걸러진다)
+	// ------------------------------------------------------------------
+
 	@Test
-	void 같은_타입_안에서_top_후보가_동점이면_priority로_해결하지_않고_HOLD이며_topCandidate가_없다() {
-		ProductCandidateInput productA = new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1);
-		ProductCandidateInput productB = new ProductCandidateInput(2L, SYMPTOM_START.minusDays(5), SYMPTOM_START, 1);
-		AnalysisInput input = new AnalysisInput(ANALYSIS_DATE, List.of(productA, productB), List.of(), null, null);
+	void top이_STRONG이고_second가_없으면_HIGH이다() {
+		AnalysisResult result = analyzeSingleProduct(SYMPTOM_START.minusDays(10), 1);
 
-		AnalysisResult result = engine.analyze(input);
-
-		// candidates 목록 자체는 정렬 결과로 두 후보를 모두 담고 있지만(둘 다 STRONG),
-		// 이는 "1등이 정해졌다"는 뜻이 아니다 — topCandidate가 null인 것으로 그 사실을 확인한다.
-		assertThat(result.candidates()).extracting(CandidateResult::strength)
-				.containsExactly(EvidenceStrength.STRONG, EvidenceStrength.STRONG);
-		assertThat(result.hold()).isTrue();
-		assertThat(result.topCandidate()).isNull();
-		assertThat(result.confidence()).isNull();
+		assertThat(result.candidates()).hasSize(1);
+		assertThat(result.hold()).isFalse();
+		assertThat(result.confidence()).isEqualTo(Confidence.HIGH);
 	}
 
 	@Test
-	void gap이_0_2_미만이면_HOLD이고_confidence가_없다() {
-		// 정수 점수(1/2/3) 체계에서 0보다 크고 0.2 미만인 gap은 나올 수 없다 — 동점(gap=0)일 때만 이 조건에
-		// 걸린다. 서로 다른 타입의 MEDIUM 동점(2 vs 2)으로 gap=0 케이스를 검증한다.
-		CombinationCandidateInput combination = new CombinationCandidateInput("RETINOL", "ACID", ConflictPlacement.SPLIT_AM_PM);
-		ObservationCandidateInput sleep = new ObservationCandidateInput(3, 1, SUFFICIENT_COVERAGE);
-		AnalysisInput input = new AnalysisInput(ANALYSIS_DATE, List.of(), List.of(combination), sleep, null);
+	void top이_STRONG이고_second가_WEAK이면_HIGH이다() {
+		AnalysisResult result = analyzeProductAndCombination(EvidenceStrength.STRONG, EvidenceStrength.WEAK);
 
-		AnalysisResult result = engine.analyze(input);
+		assertThat(result.hold()).isFalse();
+		assertThat(result.confidence()).isEqualTo(Confidence.HIGH);
+	}
 
-		assertThat(result.candidates()).extracting(CandidateResult::strength)
-				.containsExactly(EvidenceStrength.MEDIUM, EvidenceStrength.MEDIUM);
-		assertThat(result.hold()).isTrue();
-		assertThat(result.topCandidate()).isNull();
-		assertThat(result.confidence()).isNull();
+	@Test
+	void top이_STRONG이고_second가_MEDIUM이면_NORMAL이다() {
+		AnalysisResult result = analyzeProductAndCombination(EvidenceStrength.STRONG, EvidenceStrength.MEDIUM);
+
+		assertThat(result.hold()).isFalse();
+		assertThat(result.confidence()).isEqualTo(Confidence.NORMAL);
+	}
+
+	@Test
+	void top이_MEDIUM이면_second와_무관하게_NORMAL이다() {
+		AnalysisResult result = analyzeProductAndCombination(EvidenceStrength.MEDIUM, EvidenceStrength.WEAK);
+
+		assertThat(result.hold()).isFalse();
+		assertThat(result.confidence()).isEqualTo(Confidence.NORMAL);
 	}
 
 	// ------------------------------------------------------------------
