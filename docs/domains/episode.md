@@ -33,8 +33,8 @@
 - `Intake`: `onsetPeriod`(4구간), `recentNewProductName`(자유 텍스트), `notes`(nullable). `bodyParts`는 `WHOLE_FACE`와 다른 부위 동시 선택을 도메인에서 차단한다.
 - `analysis`는 엔티티가 아니라 순수 판정 엔진이다(DB 저장 없음, `domain.episode.analysis.domain` 패키지):
   - `CauseAnalysisEngine`(interface) / `RuleBasedCauseAnalysisEngine`(구현체) — `AnalysisInput` → `AnalysisResult`.
-  - 입력: `AnalysisInput`(analysisDate + `ProductCandidateInput`/`CombinationCandidateInput`/`ObservationCandidateInput`×2(수면/날씨)), 각 후보는 `RecordCoverage`(최초 기록일)를 갖는다.
-  - 출력: `AnalysisResult`(정렬된 `CandidateResult` 목록, `CandidateExclusion` 목록, hold 여부, topCandidate, `Confidence`). `topCandidate`/`confidence`는 "최종 선택된 원인"을 뜻하며 `candidates.get(0)`(정렬상 1번째)과는 다르다 — same-type tie로 HOLD면 둘 다 null이다(이 불변식은 `AnalysisResult`의 compact constructor가 강제한다). 게이트에서 제외된 후보는 `candidates`가 아니라 `exclusions`(`CandidateExclusion`: type + `ExclusionReason`(`NO_TARGET`/`INSUFFICIENT_RECORDS`) + 식별자)에 남는다. `CandidateResult`는 `CandidateType`/`EvidenceStrength`/`Evidence`(sealed: `TimingEvidence`/`CombinationEvidence`/`FrequencyEvidence`)/`coverageDays`(2026-08-17 추가, 아래 card 참고)로 구성.
+  - 입력: `AnalysisInput`(analysisDate + `ProductCandidateInput`/`CombinationCandidateInput`/`ObservationCandidateInput`×2(수면/날씨)). **`RecordCoverage`(최초 기록일)는 `ObservationCandidateInput`(수면/날씨)만 갖는다(2026-08-18 정정)** — `ProductCandidateInput`/`CombinationCandidateInput`에는 coverage 필드 자체가 없다. 이유는 아래 "후보 수집(candidate 생성) 조건" 참고.
+  - 출력: `AnalysisResult`(정렬된 `CandidateResult` 목록, `CandidateExclusion` 목록, hold 여부, topCandidate, `Confidence`). `topCandidate`/`confidence`는 "최종 선택된 원인"을 뜻하며 `candidates.get(0)`(정렬상 1번째)과는 다르다 — same-type tie로 HOLD면 둘 다 null이다(이 불변식은 `AnalysisResult`의 compact constructor가 강제한다). 게이트에서 제외된 후보는 `candidates`가 아니라 `exclusions`(`CandidateExclusion`: type + `ExclusionReason`(`NO_TARGET`/`INSUFFICIENT_RECORDS`) + 식별자)에 남는다. `CandidateResult`는 `CandidateType`/`EvidenceStrength`/`Evidence`(sealed: `TimingEvidence`/`CombinationEvidence`/`FrequencyEvidence`)/`coverageDays`(`Long`, 2026-08-17 추가)로 구성 — **`coverageDays`는 SLEEP/WEATHER만 실제 값을 갖고, PRODUCT/COMBINATION은 항상 null이다(2026-08-18 정정)**.
 - `card`는 엔티티가 아니라 순수 조립 로직이다(DB 저장 없음, `domain.episode.card.domain` 패키지): `ResultCardAssembler.assemble(AnalysisResult)` → `ResultCardResult`(hold 여부, `ResultCardHoldReason`, `Confidence`, 항상 3장인 `ResultCard` 목록). `ResultCard`는 `type`(`ResultCardType`)/`causeType`/`evidence`(기존 Analysis `Evidence` 재사용)/`coverageDays`로 구성 — 실제 문장(제목/이유 한 줄)은 만들지 않는다(아래 Confirmed Decisions 참고).
 - `checkin`은 `CheckIn` 엔티티(`domain.episode.checkin.domain`, checkin 서브도메인 고유 데이터라 공유 위치가 아님)로 구현했다: `episodeId`(값 참조, FK 없음), `checkInDate`, `status`(`CheckInStatus`: `IMPROVED`/`SAME`/`WORSE`). `episodeId`+`checkInDate` UNIQUE(DB 제약 포함). `overwrite(status)`로 같은 날짜 재기록 시 값을 덮어쓴다(Confirmed Decisions 참고).
 - 4.2 판정은 엔티티/DB 저장 없이 순수 함수로 구현했다: `Day3JudgmentEngine`(`Day3JudgmentInput` → `Day3JudgmentResult`, Repository/Spring 의존 없음) + `Day3JudgmentResult`(`Day3Verdict`: `WITHHELD`/`MAINTAIN`/`EXTEND`/`STOP`). `Day3JudgmentInput`은 `day1Status`/`day2Status`/`day3Status`(각 nullable, 건너뛴 날)를 이미 정리된 값으로 받는다 — **저장된 `CheckIn`(#37, 날짜만 가짐)을 실제 Day1/Day2/Day3에 매핑하는 로직은 이번 범위에 없다.** 그 매핑에는 Routine의 시작일이 필요한데 `routine`이 아직 구현되지 않아 존재하지 않는다(아래 참고). 매핑 orchestration이 없으니 이 엔진을 호출하는 application/Controller 계층도 아직 없다.
@@ -45,8 +45,8 @@
 
 - 서브도메인 간: `intake → analysis → card → routine → checkin` 순차 의존(역방향 지양).
 - `analysis`의 판정 엔진 자체는 `vanity`/`tracking`을 코드로 의존하지 않는다(정규화된 입력 모델만 안다). 다만 실제 운영에서 그 입력을 채우려면 두 도메인에서 아래 데이터가 필요하다 — 두 도메인 모두 아직 코드가 없어 실제 연동은 없다:
-  - **`vanity`에서 필요**: 계정의 제품별 사용 시작일(`ProductCandidateInput.usageStartDate`), 같은 기간 내 사용 시작한 제품 수(`changedProductCountInWindow`), 충돌 태그를 가진 제품 쌍과 그 배치(같은 time slot/AM·PM 분리, `CombinationCandidateInput`) — 즉 최소 "제품별 사용 시작일 조회"와 "보유 제품 중 충돌 조합 판별" 기능이 필요하다.
-  - **`tracking`에서 필요**: 최근 수면/날씨 관측 횟수와 그중 증상과 일치한 횟수(`ObservationCandidateInput`), 그리고 각 후보의 최초 기록일(coverage) — 즉 최소 "계정별 수면/날씨 관측 집계" 기능이 필요하다.
+  - **`vanity`에서 필요**: 계정의 제품별 사용 시작일(`ProductCandidateInput.usageStartDate`), 같은 기간 내 사용 시작한 제품 수(`changedProductCountInWindow`), 충돌 태그를 가진 제품 쌍과 그 배치(같은 time slot/AM·PM 분리, `CombinationCandidateInput`) — 즉 최소 "제품별 사용 시작일 조회"와 "보유 제품 중 충돌 조합 판별" 기능이 필요하다. **`usageStartDate`의 실제 source는 Pending(2026-08-18)** — Vanity `Product`에는 "개봉일"(`openedAt`)만 있고, Manyfast에 "개봉일 = 사용 시작일"이라는 대응이 정의돼 있지 않다. `openedAt`을 자동으로 매핑하지 않는다.
+  - **`tracking`에서 필요**: 최근 수면/날씨 관측 횟수와 그중 증상과 일치한 횟수(`ObservationCandidateInput`), 그리고 각 후보의 최초 기록일(coverage) — 즉 최소 "계정별 수면/날씨 관측 집계" 기능이 필요하다. **수면 raw-level → matched-observation count 산출 규칙은 Pending(2026-08-18)** — Tracking은 `SleepLevel`(WELL/NORMAL/POOR 3단계)만 저장하고, 이를 증상과 "일치"로 볼지 정하는 규칙이 Manyfast에 없다. **날씨(온도/습도/자외선) matching threshold도 Pending(2026-08-18)** — Tracking은 raw 수치만 저장하고, 어떤 값이 증상과 "일치"인지 정하는 threshold가 Manyfast에 없다.
   - 실제 read port(Repository/Service 호출 방식)는 두 도메인의 데이터가 준비된 뒤, `EpisodeAnalysisService`를 만드는 시점에 설계한다(소비자가 없는 인터페이스를 미리 만들지 않는다).
 - `card`는 결과 카드 화면 하단 진입점을 통해 `story`(같은 증상 태그의 글 개수/목록)에 의존한다. `story`도 미구현 상태라 실제 연동은 없다.
 - `card` ↔ `vanity`/`story` 간 실제 조회 방식(동기 호출/read model/캐시 등)과 `analysis`/`card` REST API를 하나로 묶을지 분리할지는 기획 확인 대상이 아니라 backend architecture 결정 사항이다 — 실제 구현 시점에 정한다.
@@ -69,11 +69,12 @@
   - **제품 조합**: 충돌 태그를 가진 제품이 같은 시간대에 배치되면 강. 충돌은 있지만 아침/저녁으로 분리되면 중. 충돌이 없으면 약.
   - **수면 / 날씨**: 관찰 5회 이상 + 일치 비율 70% 이상이면 강. 관찰 3~4회 또는 일치 비율 50~70%면 중. 그 미만이면 약. **70% 경계값 확정(2026-08-16)**: "강" 조건(관찰≥5 그리고 일치율≥70%)을 먼저 평가하고, 이를 만족하지 못하면 "중" 조건(관찰 3~4 또는 일치율 50~70%, 양 끝 포함)을 본다 — 즉 정확히 70%는 관찰이 5회 이상일 때만 강이고, 5회 미만이면 중으로 fallback된다. 정수 관측 횟수에서는 "관찰 5회 미만 + 일치율 정확히 70%"는 산술적으로 나올 수 없다(70%를 정수 분수로 표현하려면 분모가 최소 10 이상이어야 한다) — 이 조합 자체가 불가능하다는 점도 확인했다.
 - **후보별 근거 강도를 점수로 환산하는 기준**이 확정됐다(2026-08-13 추가 답변): 강 = 3, 중 = 2, 약 = 1. 아래 확신 단계 계산의 `점수`는 이 값을 쓴다.
-- **후보 수집(candidate 생성) 조건**이 확정됐다(2026-08-13 추가 답변) — 4종 후보 각각에 공통으로 적용:
-  - 대상 없음(예: 최근 새로 쓰는 제품 없음, 충돌 조합 없음) → 후보 목록에서 제외, 사유 `대상 없음`
-  - 기록 7일 미만 → 후보 목록에서 제외, 사유 `기록 부족`
-  - 대상 있음 → 후보 목록에 추가하고 위 근거 강도(강/중/약) 계산 진행
-  - **"기록 7일" 게이트 정의 확정(2026-08-16)**: record 건수가 아니라 **calendar-day coverage**다 — 해당 후보 데이터의 최초 기록일부터 분석 기준일(`episode.createdAt`의 날짜)까지의 날짜 수(양 끝 포함)가 7 이상이면 통과한다(예: 8/10~8/16 = 7일 → 통과). 관찰 횟수(수면/날씨의 3~5회 이상)나 14일 timing window(특정 제품)와는 별개의 규칙이며, 하나로 합치지 않는다 — 관찰 3~4회여도 최초 기록일이 7 calendar days 이상 전이면 이 게이트는 통과할 수 있다(그 다음 근거 강도 판정에서 "관찰 3~4회 → 중"으로 별도 평가된다).
+- **후보 수집(candidate 생성) 조건**이 확정됐다(2026-08-13 추가 답변):
+  - 대상 없음(예: 최근 새로 쓰는 제품 없음, 충돌 조합 없음) → 후보 목록에서 제외, 사유 `대상 없음`. 이 조건은 **4종 후보 공통**이다.
+  - **기록 7일 미만 → 후보 목록에서 제외, 사유 `기록 부족`. 이 조건은 수면/날씨 2종에만 적용된다 — 제품/제품 조합에는 적용되지 않는다(2026-08-18 정정, 아래 "왜 바뀌었나" 참고).**
+  - 대상 있음(그리고 수면/날씨는 7일 게이트까지 통과) → 후보 목록에 추가하고 위 근거 강도(강/중/약) 계산 진행. 제품/제품 조합은 대상만 있으면 coverage 검사 없이 바로 강도 계산으로 넘어간다.
+  - **"기록 7일" 게이트 정의 확정(2026-08-16, 적용 대상은 2026-08-18 정정)**: record 건수가 아니라 **calendar-day coverage**다 — 해당 후보 데이터의 최초 기록일부터 분석 기준일(`episode.createdAt`의 날짜)까지의 날짜 수(양 끝 포함)가 7 이상이면 통과한다(예: 8/10~8/16 = 7일 → 통과). 관찰 횟수(수면/날씨의 3~5회 이상)나 14일 timing window(특정 제품)와는 별개의 규칙이며, 하나로 합치지 않는다 — 관찰 3~4회여도 최초 기록일이 7 calendar days 이상 전이면 이 게이트는 통과할 수 있다(그 다음 근거 강도 판정에서 "관찰 3~4회 → 중"으로 별도 평가된다).
+  - **왜 바뀌었나(2026-08-18)**: 이전 문서는 이 게이트를 "4종 후보 각각에 공통으로 적용"이라고 기술했었다. Manyfast updateData 원문 재확인 결과 7일 미만 제외 대상이 수면과 날씨로 명시되어 있었음 — 통합 분석(F-ZSPZHH) `updateData`의 "[후보 수집]" 규칙 원문: "검증할 대상이 없으면 목록에서 제외하고 사유를 대상없음으로 남긴다. 일일 기록이 **7일 미만이면 수면과 날씨를** 제외하고 사유를 기록부족으로 남긴다. 대상은 있는데 근거가 부실한 경우는 제외하지 않고 강도 약으로 목록에 남긴다." 이 원문이 명시적으로 "수면과 날씨"라고만 못박고 있어, 제품/제품 조합까지 이 게이트를 적용하던 기존 구현·문서 서술은 잘못된 해석이었다. 코드(`RuleBasedCauseAnalysisEngine`)는 이 정정을 반영해 제품/제품 조합에서 coverage 검사와 `INSUFFICIENT_RECORDS` exclusion 로직을 제거했다.
 - **보류(withhold) 판정 조건**이 확정됐다(2026-08-13 추가 답변, 기존 규칙 확장):
   - 후보 목록이 비어 있음 → 보류
   - 1순위 근거 강도가 약 → 보류
@@ -117,7 +118,7 @@
 - 세 번째 카드(병원 권유)는 원인 후보/확신 단계와 무관하게 **항상 표시**한다.
 - 판단 보류 상태("아직 판단하기 이릅니다")일 때는 첫 번째 카드(중단 권유)를 보류 안내로 대체하고, 병원 카드는 그대로 유지한다. 보류여도 보류 사유·오늘 해볼 일반 조언·병원 방문 기준 세 가지는 항상 내려준다(통합 분석 updateData exceptions).
 - **원인 후보가 WEATHER면 멈출 대상이 없으므로 첫 번째 카드가 "오늘 중단할 것"(`DISCONTINUE`) 대신 "오늘 더 해줄 것"(`DO_MORE_TODAY`)으로 바뀐다** — 통합 분석 updateData exceptions: "날씨가 1순위면 멈출 대상이 없으므로 중단할 것 카드 대신 오늘 더 해줄 것 카드로 바꾼다."
-- **"N일치 기록" = `RecordCoverage.coverageDays`(2026-08-17 확정)** — Analysis의 7-day gate에 쓰는 그 calendar coverage 값과 동일하다. `FrequencyEvidence.observationCount`/`matchedObservationCount`(확신 단계 문장에 쓰는 "N번 중 M번" 관찰 횟수)와는 **서로 다른 숫자**이며 섞지 않는다 — 이번에 `CandidateResult`에 `coverageDays` 필드를 추가해 이 값을 노출하도록 보완했다(7-day gate/strength/ranking/gap/HOLD/confidence/exclusions 규칙 자체는 변경 없음).
+- **"N일치 기록" = `RecordCoverage.coverageDays`(2026-08-17 확정, 적용 대상은 2026-08-18 정정)** — Analysis의 7-day gate에 쓰는 그 calendar coverage 값과 동일하다. `FrequencyEvidence.observationCount`/`matchedObservationCount`(확신 단계 문장에 쓰는 "N번 중 M번" 관찰 횟수)와는 **서로 다른 숫자**이며 섞지 않는다. **이 값은 원인 후보가 SLEEP/WEATHER일 때만 존재한다(2026-08-18 정정)** — 7-day coverage 게이트 자체가 수면/날씨 전용이라 PRODUCT/COMBINATION은 coverage 시작점이라는 개념 자체가 없다. `ResultCard.coverageDays`는 그래서 causeType이 PRODUCT/COMBINATION이면 항상 null이고, 카드는 이때 "N일치 기록에 근거"라는 임의 숫자를 만들어 채우지 않는다. **PRODUCT/COMBINATION Result Card에서 근거 기간을 무엇으로 보여줄지는 Pending(2026-08-18)** — 기획에 정의돼 있지 않다.
 - **보류 사유는 `CandidateExclusion`으로 구분한다(2026-08-17 확정, 구현 범위)**: 후보 목록이 비어 있고(모든 타입 제외) 그중 하나라도 `INSUFFICIENT_RECORDS`면 "기록이 더 모이면" 류의 안내, 전부 `NO_TARGET`이면 그런 약속을 하지 않는다(통합 분석 updateData exceptions). 후보가 있었지만 근거 부족/동점/gap으로 보류된 경우는 별도 사유(`INCONCLUSIVE_EVIDENCE`)로 구분한다 — 정확한 문구는 기획에 없어 만들지 않았다.
 - 카드 자체에는 별도 태그 체계가 없다(2026-08-17 확정, 아래 Pending Decisions 정정 참고) — dataSpec은 "제목/대상 제품 또는 기준/이유 한 줄/근거 출처"뿐이다. "근거 출처"는 기존 `CandidateType`/`Evidence`로 표현되며 새 타입 체계가 필요 없다.
 - 두 번째 카드(오늘 사용할 것)는 보유 제품 "전체" 목록에서 구성해야 하는데 이건 Vanity 데이터가 있어야 가능하다 — 이번 범위에서는 카드 자리(`CONTINUE_USE` 타입)만 만들고 내용은 비워둔다.
@@ -147,6 +148,10 @@
 
 - **(2026-08-17 정정)** ~~카드에 표시되는 "보습", "세라마이드" 등 태그가 vanity의 InteractionTag(5종)와 별도 체계인지~~ — 재확인 결과 이건 Result Card(F-HGUJDZ)가 아니라 **"빈 범주 안내"라는 별개 기능**의 내용이었다(범주: 진정/장벽 강화/보습/자외선 차단/각질 관리 — Vanity `InteractionTag`와는 확실히 다른 체계). Result Card 자체의 dataSpec에는 태그 필드가 없다. "빈 범주 안내"는 이번 범위 밖이며, 그 기능을 다룰 때 다시 확인한다.
 - Figma 결과 화면의 "좋아졌다" 버튼이 실제로 어떤 행동을 트리거하는지 — **여전히 미확정.** "좋아졌다"라는 단어는 Manyfast 전체에서 Daily Check-in(F-SQUDJA)과 Day3 판정(F-TWLPPZ) 설명에만 등장하고, Result Card(F-HGUJDZ)의 action/outcome/rules 어디에도 카드 화면 자체에 이런 버튼이 있다는 문구가 없다(카드 안에 둘 수 있는 보조 버튼은 "이야기로 이동" 버튼뿐이라고 명시됨). 이번 Result Card 구현에서도 관련 API/Check-in 연결/navigation을 구현하지 않았다.
+- **(2026-08-18 신규) `usageStartDate` ↔ Vanity `openedAt` 대응 여부** — Manyfast에 "개봉일 = 사용 시작일"이라는 명시적 대응이 없다. `ProductCandidateInput.usageStartDate` 개념은 코드에 유지하되, 실제 어떤 Vanity 데이터로 채울지는 이 질문이 풀려야 정한다.
+- **(2026-08-18 신규) PRODUCT/COMBINATION Result Card의 근거 기간 표시 기준** — 7-day coverage 게이트가 수면/날씨 전용으로 정정되면서, 제품/제품 조합 카드에서 "N일치 기록" 대신 무엇을 근거 기간으로 보여줄지(또는 아예 보여주지 않을지)가 기획에 정의돼 있지 않다.
+- **(2026-08-18 신규) 수면 raw-level(SleepLevel: WELL/NORMAL/POOR) → matched-observation 판정 규칙** — `ObservationCandidateInput.matchedObservationCount`를 실제 Tracking 데이터로 채우려면 어떤 SleepLevel(들)을 "증상과 일치"로 볼지 규칙이 필요한데 Manyfast에 없다. Manyfast 예시 문구("잠이 5시간 아래였던 날")는 시간 단위인데 실제 저장 데이터는 3단계 coarse enum이라 예시와 데이터 모델 간 불일치도 있다.
+- **(2026-08-18 신규) 날씨(온도/습도/자외선) matching threshold** — Tracking은 raw 수치만 저장 명세돼 있고, 어떤 값을 증상과 "일치"로 볼지 threshold가 Manyfast에 없다(수면과 동일한 성격의 공백).
 
 **Implementation Decisions Pending (기획 blocker 아님 — backend 구현 시점에 정할 것)**
 

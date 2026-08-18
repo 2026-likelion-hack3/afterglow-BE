@@ -45,7 +45,12 @@ public final class RuleBasedCauseAnalysisEngine implements CauseAnalysisEngine {
 	}
 
 	// ------------------------------------------------------------------
-	// candidate 수집 + 근거 강도 (7일 게이트는 모든 타입 공통으로 여기서 적용, 제외 사유는 exclusions에 기록)
+	// candidate 수집 + 근거 강도
+	//
+	// "대상 없음 → NO_TARGET" 게이트는 4종 공통이다. 하지만 "7일 미만 → INSUFFICIENT_RECORDS" coverage
+	// 게이트는 SLEEP/WEATHER 전용이다 — Manyfast 통합 분석(F-ZSPZHH, updateData) [후보 수집] 규칙 원문:
+	// "일일 기록이 7일 미만이면 수면과 날씨를 제외하고 사유를 기록부족으로 남긴다"(2026-08-18 재확인).
+	// PRODUCT/COMBINATION은 대상이 있으면 coverage 검사 없이 바로 근거 강도를 계산한다.
 	// ------------------------------------------------------------------
 
 	private void collectProductCandidates(
@@ -55,16 +60,11 @@ public final class RuleBasedCauseAnalysisEngine implements CauseAnalysisEngine {
 			return;
 		}
 		for (ProductCandidateInput product : input.products()) {
-			String identifier = String.valueOf(product.productId());
-			if (!product.coverage().meetsSevenDayGate(input.analysisDate())) {
-				exclusions.add(new CandidateExclusion(CandidateType.PRODUCT, ExclusionReason.INSUFFICIENT_RECORDS, identifier));
-				continue;
-			}
 			candidates.add(new CandidateResult(
 					CandidateType.PRODUCT,
 					productStrength(product),
 					new TimingEvidence(product.productId(), product.usageStartDate(), product.symptomStartDate()),
-					product.coverage().coverageDays(input.analysisDate())));
+					null));
 		}
 	}
 
@@ -88,11 +88,6 @@ public final class RuleBasedCauseAnalysisEngine implements CauseAnalysisEngine {
 			return;
 		}
 		for (CombinationCandidateInput combo : input.combinations()) {
-			String identifier = combo.tagA() + "x" + combo.tagB();
-			if (!combo.coverage().meetsSevenDayGate(input.analysisDate())) {
-				exclusions.add(new CandidateExclusion(CandidateType.COMBINATION, ExclusionReason.INSUFFICIENT_RECORDS, identifier));
-				continue;
-			}
 			EvidenceStrength strength = switch (combo.conflictPlacement()) {
 				case SAME_TIME_SLOT -> EvidenceStrength.STRONG;
 				case SPLIT_AM_PM -> EvidenceStrength.MEDIUM;
@@ -102,7 +97,7 @@ public final class RuleBasedCauseAnalysisEngine implements CauseAnalysisEngine {
 					CandidateType.COMBINATION,
 					strength,
 					new CombinationEvidence(combo.tagA(), combo.tagB(), combo.conflictPlacement()),
-					combo.coverage().coverageDays(input.analysisDate())));
+					null));
 		}
 	}
 

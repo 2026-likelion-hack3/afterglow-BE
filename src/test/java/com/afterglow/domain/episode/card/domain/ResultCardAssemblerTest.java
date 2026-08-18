@@ -23,7 +23,7 @@ class ResultCardAssemblerTest {
 
 	@Test
 	void 정상_판정_결과는_카드_3장을_만들고_첫_카드는_DISCONTINUE다() {
-		CandidateResult top = productCandidate(EvidenceStrength.STRONG, 9L);
+		CandidateResult top = productCandidate(EvidenceStrength.STRONG);
 		AnalysisResult analysisResult = AnalysisResult.determined(List.of(top), List.of(), top, Confidence.HIGH);
 
 		ResultCardResult result = assembler.assemble(analysisResult);
@@ -32,12 +32,14 @@ class ResultCardAssemblerTest {
 		assertThat(result.cards()).hasSize(3);
 		assertThat(result.cards().get(0).type()).isEqualTo(ResultCardType.DISCONTINUE);
 		assertThat(result.cards().get(0).causeType()).isEqualTo(CandidateType.PRODUCT);
-		assertThat(result.cards().get(0).coverageDays()).isEqualTo(9L);
+		// PRODUCT는 coverage 게이트가 없어 CandidateResult.coverageDays 자체가 항상 null이다(2026-08-18 확정) —
+		// 카드가 임의 숫자를 만들어 채우지 않는지 여기서 함께 확인한다.
+		assertThat(result.cards().get(0).coverageDays()).isNull();
 	}
 
 	@Test
 	void HIGH_confidence는_그대로_노출된다() {
-		CandidateResult top = productCandidate(EvidenceStrength.STRONG, 14L);
+		CandidateResult top = productCandidate(EvidenceStrength.STRONG);
 		AnalysisResult analysisResult = AnalysisResult.determined(List.of(top), List.of(), top, Confidence.HIGH);
 
 		ResultCardResult result = assembler.assemble(analysisResult);
@@ -48,7 +50,7 @@ class ResultCardAssemblerTest {
 
 	@Test
 	void NORMAL_confidence는_그대로_노출된다() {
-		CandidateResult top = productCandidate(EvidenceStrength.MEDIUM, 7L);
+		CandidateResult top = productCandidate(EvidenceStrength.MEDIUM);
 		AnalysisResult analysisResult = AnalysisResult.determined(List.of(top), List.of(), top, Confidence.NORMAL);
 
 		ResultCardResult result = assembler.assemble(analysisResult);
@@ -107,7 +109,7 @@ class ResultCardAssemblerTest {
 
 	@Test
 	void 후보는_있었지만_근거가_약해_보류면_INCONCLUSIVE_EVIDENCE다() {
-		CandidateResult weakTop = productCandidate(EvidenceStrength.WEAK, 8L);
+		CandidateResult weakTop = productCandidate(EvidenceStrength.WEAK);
 		AnalysisResult analysisResult = AnalysisResult.hold(List.of(weakTop), List.of());
 
 		ResultCardResult result = assembler.assemble(analysisResult);
@@ -117,7 +119,7 @@ class ResultCardAssemblerTest {
 
 	@Test
 	void 병원_카드는_determined_결과에서도_항상_포함된다() {
-		CandidateResult top = productCandidate(EvidenceStrength.STRONG, 9L);
+		CandidateResult top = productCandidate(EvidenceStrength.STRONG);
 		AnalysisResult analysisResult = AnalysisResult.determined(List.of(top), List.of(), top, Confidence.HIGH);
 
 		ResultCardResult result = assembler.assemble(analysisResult);
@@ -136,7 +138,7 @@ class ResultCardAssemblerTest {
 
 	@Test
 	void 카드는_hold_여부와_무관하게_항상_3장이다() {
-		CandidateResult top = productCandidate(EvidenceStrength.STRONG, 9L);
+		CandidateResult top = productCandidate(EvidenceStrength.STRONG);
 		AnalysisResult determined = AnalysisResult.determined(List.of(top), List.of(), top, Confidence.HIGH);
 		AnalysisResult hold = AnalysisResult.hold(List.of(), List.of());
 
@@ -146,7 +148,7 @@ class ResultCardAssemblerTest {
 
 	@Test
 	void 두번째_카드는_CONTINUE_USE_타입으로_자리만_있고_근거는_없다() {
-		CandidateResult top = productCandidate(EvidenceStrength.STRONG, 9L);
+		CandidateResult top = productCandidate(EvidenceStrength.STRONG);
 		AnalysisResult analysisResult = AnalysisResult.determined(List.of(top), List.of(), top, Confidence.HIGH);
 
 		ResultCardResult result = assembler.assemble(analysisResult);
@@ -159,8 +161,11 @@ class ResultCardAssemblerTest {
 	}
 
 	@Test
-	void coverageDays는_카드에_그대로_노출된다() {
-		CandidateResult top = productCandidate(EvidenceStrength.STRONG, 13L);
+	void sleep_weather처럼_coverageDays를_가진_후보는_카드에_그대로_노출된다() {
+		// PRODUCT/COMBINATION은 CandidateResult.coverageDays가 항상 null이라(2026-08-18 확정) 이 통과
+		// 동작은 SLEEP/WEATHER로만 검증할 수 있다.
+		CandidateResult top = new CandidateResult(
+				CandidateType.SLEEP, EvidenceStrength.STRONG, new FrequencyEvidence(10, 8), 13L);
 		AnalysisResult analysisResult = AnalysisResult.determined(List.of(top), List.of(), top, Confidence.HIGH);
 
 		ResultCardResult result = assembler.assemble(analysisResult);
@@ -183,8 +188,9 @@ class ResultCardAssemblerTest {
 		assertThat(firstCard.coverageDays()).isEqualTo(9L);
 	}
 
-	private CandidateResult productCandidate(EvidenceStrength strength, long coverageDays) {
+	/** PRODUCT는 coverage 게이트가 없어 CandidateResult.coverageDays가 항상 null이다(2026-08-18 확정). */
+	private CandidateResult productCandidate(EvidenceStrength strength) {
 		return new CandidateResult(CandidateType.PRODUCT, strength,
-				new TimingEvidence(1L, LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 10)), coverageDays);
+				new TimingEvidence(1L, LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 10)), null);
 	}
 }
