@@ -47,7 +47,12 @@ public class Product extends BaseEntity {
 	private LocalDate openedAt;
 
 	@Enumerated(EnumType.STRING)
+	private OpeningPeriod openingPeriod;
+
+	@Enumerated(EnumType.STRING)
 	private UsageTiming usageTiming;
+
+	private LocalDate usageTimingChangedAt;
 
 	/** 5개 상호작용 태그로 한정 — 기능명세서 5.1 비즈니스 규칙 */
 	@ElementCollection(fetch = FetchType.LAZY)
@@ -68,7 +73,7 @@ public class Product extends BaseEntity {
 
 	@Builder
 	private Product(Long accountId, String name, String brand, String type, String keyIngredients,
-			Set<String> functionTags, LocalDate openedAt, UsageTiming usageTiming,
+			Set<String> functionTags, LocalDate openedAt, OpeningPeriod openingPeriod, UsageTiming usageTiming,
 			Set<InteractionTag> interactionTags, RegistrationSource registrationSource,
 			String barcode, String photoKey) {
 		this.accountId = accountId;
@@ -80,6 +85,7 @@ public class Product extends BaseEntity {
 			this.functionTags = functionTags;
 		}
 		this.openedAt = openedAt;
+		this.openingPeriod = openingPeriod;
 		this.usageTiming = usageTiming;
 		if (interactionTags != null) {
 			this.interactionTags = interactionTags;
@@ -90,7 +96,7 @@ public class Product extends BaseEntity {
 	}
 
 	public void updateDetails(String name, String brand, String type, String keyIngredients,
-			Set<String> functionTags, LocalDate openedAt, UsageTiming usageTiming,
+			Set<String> functionTags, LocalDate openedAt, OpeningPeriod openingPeriod, UsageTiming usageTiming,
 			Set<InteractionTag> interactionTags) {
 		this.name = name;
 		this.brand = brand;
@@ -98,6 +104,12 @@ public class Product extends BaseEntity {
 		this.keyIngredients = keyIngredients;
 		this.functionTags = functionTags != null ? functionTags : new LinkedHashSet<>();
 		this.openedAt = openedAt;
+		this.openingPeriod = openingPeriod;
+
+		if (this.usageTiming != usageTiming) {
+			this.usageTimingChangedAt = LocalDate.now();
+		}
+
 		this.usageTiming = usageTiming;
 		this.interactionTags = interactionTags != null ? interactionTags : new LinkedHashSet<>();
 	}
