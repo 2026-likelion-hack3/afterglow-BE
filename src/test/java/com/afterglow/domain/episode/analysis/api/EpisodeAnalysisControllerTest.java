@@ -131,6 +131,64 @@ class EpisodeAnalysisControllerTest {
 				.isEqualTo(objectMapper.readTree(second));
 	}
 
+	@Test
+	void 분석_후_explanation_조회는_기본_설정에서_FALLBACK_source로_200을_받는다() throws Exception {
+		String token = createAnonymousAccountToken();
+		Long episodeId = createIntakeCompletedEpisode(token);
+
+		mockMvc.perform(post("/api/episodes/" + episodeId + "/analysis")
+						.header("Authorization", "Bearer " + token))
+				.andExpect(status().isOk());
+
+		mockMvc.perform(get("/api/episodes/" + episodeId + "/analysis/explanation")
+						.header("Authorization", "Bearer " + token))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.source").value("FALLBACK"))
+				.andExpect(jsonPath("$.headline").isNotEmpty())
+				.andExpect(jsonPath("$.summary").isNotEmpty())
+				.andExpect(jsonPath("$.nextAction").isNotEmpty());
+	}
+
+	@Test
+	void 분석_결과가_없으면_explanation_조회가_404를_받는다() throws Exception {
+		String token = createAnonymousAccountToken();
+		Long episodeId = createIntakeCompletedEpisode(token);
+
+		mockMvc.perform(get("/api/episodes/" + episodeId + "/analysis/explanation")
+						.header("Authorization", "Bearer " + token))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void 존재하지_않는_episode의_explanation은_404를_받는다() throws Exception {
+		String token = createAnonymousAccountToken();
+
+		mockMvc.perform(get("/api/episodes/999999/analysis/explanation")
+						.header("Authorization", "Bearer " + token))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void 다른_계정의_episode는_explanation을_조회할_수_없다() throws Exception {
+		String ownerToken = createAnonymousAccountToken();
+		Long episodeId = createIntakeCompletedEpisode(ownerToken);
+		mockMvc.perform(post("/api/episodes/" + episodeId + "/analysis")
+						.header("Authorization", "Bearer " + ownerToken))
+				.andExpect(status().isOk());
+
+		String otherToken = createAnonymousAccountToken();
+
+		mockMvc.perform(get("/api/episodes/" + episodeId + "/analysis/explanation")
+						.header("Authorization", "Bearer " + otherToken))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void 인증_없이_explanation을_조회하면_401을_받는다() throws Exception {
+		mockMvc.perform(get("/api/episodes/1/analysis/explanation"))
+				.andExpect(status().isUnauthorized());
+	}
+
 	private Long createEpisodeOnly(String token) throws Exception {
 		String response = mockMvc.perform(post("/api/episodes")
 						.header("Authorization", "Bearer " + token)
