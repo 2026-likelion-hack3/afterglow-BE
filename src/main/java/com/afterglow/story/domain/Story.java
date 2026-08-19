@@ -3,7 +3,7 @@ package com.afterglow.story.domain;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-import com.afterglow.common.BaseEntity;
+import com.afterglow.global.BaseEntity;
 
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;

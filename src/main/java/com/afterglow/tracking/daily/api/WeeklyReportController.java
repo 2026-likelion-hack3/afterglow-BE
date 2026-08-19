@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.afterglow.common.security.OpenApiConfig;
+import com.afterglow.global.security.OpenApiConfig;
 import com.afterglow.tracking.daily.application.WeeklyReportService;
 
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;

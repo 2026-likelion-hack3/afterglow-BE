@@ -1,8 +1,8 @@
-package com.afterglow.vanity.infrastructure;
+package com.afterglow.domain.vanity.infrastructure;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import com.afterglow.vanity.CombinationRule;
+import com.afterglow.domain.vanity.CombinationRule;
 
 public interface CombinationRuleRepository extends JpaRepository<CombinationRule, Long> {
 }

@@ -1,15 +1,15 @@
-package com.afterglow.vanity.application;
+package com.afterglow.domain.vanity.application;
 
 import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
 
-import com.afterglow.vanity.CombinationRule;
-import com.afterglow.vanity.InteractionTag;
-import com.afterglow.vanity.Product;
-import com.afterglow.vanity.UsageTiming;
-import com.afterglow.vanity.infrastructure.CombinationRuleRepository;
+import com.afterglow.domain.vanity.CombinationRule;
+import com.afterglow.domain.vanity.InteractionTag;
+import com.afterglow.domain.vanity.Product;
+import com.afterglow.domain.vanity.UsageTiming;
+import com.afterglow.domain.vanity.infrastructure.CombinationRuleRepository;
 
 import lombok.RequiredArgsConstructor;
 

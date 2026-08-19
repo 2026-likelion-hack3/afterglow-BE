@@ -6,13 +6,10 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.afterglow.account.domain.Account;
-import com.afterglow.account.domain.AccountRepository;
 import com.afterglow.tracking.daily.api.DailyTrackingResponse;
 import com.afterglow.tracking.daily.domain.ConditionLevel;
-import com.afterglow.tracking.daily.domain.DailyTracking;
-import com.afterglow.tracking.daily.domain.DailyTrackingRepository;
 import com.afterglow.tracking.daily.domain.SleepLevel;
+import com.afterglow.tracking.daily.domain.DailyTrackingRepository;
 import com.afterglow.tracking.daily.infrastructure.WeatherClient;
 import com.afterglow.tracking.daily.infrastructure.WeatherData;
 
@@ -24,10 +21,9 @@ import lombok.RequiredArgsConstructor;
 public class DailyTrackingService {
 
 	private final DailyTrackingRepository dailyTrackingRepository;
-	private final AccountRepository accountRepository;
+	private final DailyTrackingPersistenceService dailyTrackingPersistenceService;
 	private final WeatherClient weatherClient;
 
-	@Transactional
 	public void createOrUpdate(
 		Long accountId,
 		LocalDate recordedDate,
@@ -36,31 +32,17 @@ public class DailyTrackingService {
 		double latitude,
 		double longitude) {
 
-		Account account = accountRepository.findById(accountId)
-			.orElseThrow(() -> new IllegalArgumentException("계정을 찾을 수 없습니다."));
+		// 외부 Weather API 호출은 DB Transaction 밖에서 수행
+		WeatherData weather = weatherClient.getWeatherByDate(
+			latitude,
+			longitude,
+			recordedDate
+		);
 
-		WeatherData weather = weatherClient.getCurrentWeather(latitude, longitude);
-
-		DailyTracking tracking = dailyTrackingRepository
-			.findByAccountIdAndRecordedDate(accountId, recordedDate)
-			.orElse(null);
-
-		if (tracking == null) {
-			tracking = DailyTracking.create(
-				account,
-				recordedDate,
-				sleepLevel,
-				conditionLevel,
-				weather.temperature(),
-				weather.humidity(),
-				weather.uvIndex()
-			);
-
-			dailyTrackingRepository.save(tracking);
-			return;
-		}
-
-		tracking.update(
+		// 날씨 조회가 끝난 후 DB 저장 Transaction 시작
+		dailyTrackingPersistenceService.saveOrUpdate(
+			accountId,
+			recordedDate,
 			sleepLevel,
 			conditionLevel,
 			weather.temperature(),

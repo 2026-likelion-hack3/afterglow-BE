@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.afterglow.common.security.OpenApiConfig;
+import com.afterglow.global.security.OpenApiConfig;
 import com.afterglow.notification.application.NotificationService;
 
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;

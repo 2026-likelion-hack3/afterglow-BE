@@ -1,11 +1,11 @@
-package com.afterglow.vanity.api.request;
+package com.afterglow.domain.vanity.api.request;
 
 import java.time.LocalDate;
 import java.util.Set;
 
-import com.afterglow.vanity.InteractionTag;
-import com.afterglow.vanity.RegistrationSource;
-import com.afterglow.vanity.UsageTiming;
+import com.afterglow.domain.vanity.InteractionTag;
+import com.afterglow.domain.vanity.RegistrationSource;
+import com.afterglow.domain.vanity.UsageTiming;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;

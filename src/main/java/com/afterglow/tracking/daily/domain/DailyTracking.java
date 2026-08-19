@@ -2,16 +2,12 @@ package com.afterglow.tracking.daily.domain;
 
 import java.time.LocalDate;
 
-import com.afterglow.account.domain.Account;
-import com.afterglow.common.BaseEntity;
+import com.afterglow.global.BaseEntity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -31,9 +27,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class DailyTracking extends BaseEntity {
 
-	@ManyToOne(fetch = FetchType.LAZY, optional = false)
-	@JoinColumn(name = "account_id", nullable = false)
-	private Account account;
+	@Column(nullable = false)
+	private Long accountId;
 
 	@Column(nullable = false)
 	private LocalDate recordedDate;
@@ -53,7 +48,7 @@ public class DailyTracking extends BaseEntity {
 	private Double uvIndex;
 
 	private DailyTracking(
-		Account account,
+		Long accountId,
 		LocalDate recordedDate,
 		SleepLevel sleepLevel,
 		ConditionLevel conditionLevel,
@@ -61,7 +56,7 @@ public class DailyTracking extends BaseEntity {
 		Double humidity,
 		Double uvIndex
 	) {
-		this.account = account;
+		this.accountId = accountId;
 		this.recordedDate = recordedDate;
 		this.sleepLevel = sleepLevel;
 		this.conditionLevel = conditionLevel;
@@ -71,7 +66,7 @@ public class DailyTracking extends BaseEntity {
 	}
 
 	public static DailyTracking create(
-		Account account,
+		Long accountId,
 		LocalDate recordedDate,
 		SleepLevel sleepLevel,
 		ConditionLevel conditionLevel,
@@ -80,7 +75,7 @@ public class DailyTracking extends BaseEntity {
 		Double uvIndex
 	) {
 		return new DailyTracking(
-			account,
+			accountId,
 			recordedDate,
 			sleepLevel,
 			conditionLevel,

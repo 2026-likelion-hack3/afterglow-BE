@@ -1,4 +1,4 @@
-package com.afterglow.vanity.api;
+package com.afterglow.domain.vanity.api;
 
 import java.util.List;
 
@@ -13,10 +13,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.afterglow.vanity.api.request.ProductCreateRequest;
-import com.afterglow.vanity.api.response.ProductCreateResponse;
-import com.afterglow.vanity.api.response.ProductResponse;
-import com.afterglow.vanity.application.VanityService;
+import com.afterglow.domain.vanity.api.request.ProductCreateRequest;
+import com.afterglow.domain.vanity.api.response.ProductCreateResponse;
+import com.afterglow.domain.vanity.api.response.ProductResponse;
+import com.afterglow.domain.vanity.application.VanityService;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

@@ -2,7 +2,7 @@ package com.afterglow.notification.domain;
 
 import java.time.LocalTime;
 
-import com.afterglow.common.BaseEntity;
+import com.afterglow.global.BaseEntity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

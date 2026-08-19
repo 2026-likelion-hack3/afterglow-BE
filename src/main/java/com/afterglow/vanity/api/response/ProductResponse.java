@@ -1,12 +1,12 @@
-package com.afterglow.vanity.api.response;
+package com.afterglow.domain.vanity.api.response;
 
 import java.time.LocalDate;
 import java.util.Set;
 
-import com.afterglow.vanity.InteractionTag;
-import com.afterglow.vanity.Product;
-import com.afterglow.vanity.RegistrationSource;
-import com.afterglow.vanity.UsageTiming;
+import com.afterglow.domain.vanity.InteractionTag;
+import com.afterglow.domain.vanity.Product;
+import com.afterglow.domain.vanity.RegistrationSource;
+import com.afterglow.domain.vanity.UsageTiming;
 
 import lombok.Getter;
 

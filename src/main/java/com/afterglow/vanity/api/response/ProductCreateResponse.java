@@ -1,4 +1,4 @@
-package com.afterglow.vanity.api.response;
+package com.afterglow.domain.vanity.api.response;
 
 import java.util.List;
 

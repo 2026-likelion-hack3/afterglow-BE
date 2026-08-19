@@ -1,11 +1,11 @@
-package com.afterglow.vanity.infrastructure;
+package com.afterglow.domain.vanity.infrastructure;
 
 import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import com.afterglow.vanity.Product;
+import com.afterglow.domain.vanity.Product;
 
 public interface ProductRepository extends JpaRepository<Product, Long> {
 

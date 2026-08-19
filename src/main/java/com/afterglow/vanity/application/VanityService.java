@@ -1,15 +1,15 @@
-package com.afterglow.vanity.application;
+package com.afterglow.domain.vanity.application;
 
 import java.util.List;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.afterglow.vanity.Product;
-import com.afterglow.vanity.api.request.ProductCreateRequest;
-import com.afterglow.vanity.api.response.ProductCreateResponse;
-import com.afterglow.vanity.api.response.ProductResponse;
-import com.afterglow.vanity.infrastructure.ProductRepository;
+import com.afterglow.domain.vanity.Product;
+import com.afterglow.domain.vanity.api.request.ProductCreateRequest;
+import com.afterglow.domain.vanity.api.response.ProductCreateResponse;
+import com.afterglow.domain.vanity.api.response.ProductResponse;
+import com.afterglow.domain.vanity.infrastructure.ProductRepository;
 
 import lombok.RequiredArgsConstructor;
 

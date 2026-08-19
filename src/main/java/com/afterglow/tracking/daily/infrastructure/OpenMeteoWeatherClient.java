@@ -4,6 +4,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.time.LocalDate;
 
 import org.springframework.stereotype.Component;
 
@@ -17,24 +19,36 @@ public class OpenMeteoWeatherClient implements WeatherClient {
 	private final ObjectMapper objectMapper;
 
 	public OpenMeteoWeatherClient(ObjectMapper objectMapper) {
-		this.httpClient = HttpClient.newHttpClient();
+		this.httpClient = HttpClient.newBuilder()
+			.connectTimeout(Duration.ofSeconds(5))
+			.build();
 		this.objectMapper = objectMapper;
 	}
 
 	@Override
-	public WeatherData getCurrentWeather(double latitude, double longitude) {
+	public WeatherData getWeatherByDate(
+		double latitude,
+		double longitude,
+		LocalDate date
+	) {
 		try {
 			String url = String.format(
-				"https://api.open-meteo.com/v1/forecast"
+				"https://historical-forecast-api.open-meteo.com/v1/forecast"
 					+ "?latitude=%s"
 					+ "&longitude=%s"
-					+ "&current=temperature_2m,relative_humidity_2m,uv_index",
+					+ "&start_date=%s"
+					+ "&end_date=%s"
+					+ "&daily=temperature_2m_mean,relative_humidity_2m_mean,uv_index_max"
+					+ "&timezone=auto",
 				latitude,
-				longitude
+				longitude,
+				date,
+				date
 			);
 
 			HttpRequest request = HttpRequest.newBuilder()
 				.uri(URI.create(url))
+				.timeout(Duration.ofSeconds(10))
 				.GET()
 				.build();
 
@@ -49,18 +63,21 @@ public class OpenMeteoWeatherClient implements WeatherClient {
 				);
 			}
 
-			JsonNode current = objectMapper
+			JsonNode daily = objectMapper
 				.readTree(response.body())
-				.path("current");
+				.path("daily");
 
 			return new WeatherData(
-				current.path("temperature_2m").asDouble(),
-				current.path("relative_humidity_2m").asDouble(),
-				current.path("uv_index").asDouble()
+				daily.path("temperature_2m_mean").get(0).asDouble(),
+				daily.path("relative_humidity_2m_mean").get(0).asDouble(),
+				daily.path("uv_index_max").get(0).asDouble()
 			);
 
 		} catch (Exception e) {
-			throw new IllegalStateException("날씨 정보를 가져오지 못했습니다.", e);
+			throw new IllegalStateException(
+				"날짜별 날씨 정보를 가져오지 못했습니다.",
+				e
+			);
 		}
 	}
 }
