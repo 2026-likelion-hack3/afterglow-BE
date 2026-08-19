@@ -11,12 +11,17 @@ import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 
+import com.afterglow.domain.episode.analysis.domain.AnalysisExplanationGenerator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * afterglow.openai.enabled=false(기본값)면 {@link OpenAiClient} 빈 자체를 만들지 않는다 — 아직 실제
  * 소비자가 없으므로 API key/model 미설정 상태로도 애플리케이션 전체가 정상 기동해야 한다. enabled=true일
  * 때만 필수값을 fail-fast로 검증한다.
+ *
+ * <p>{@link AnalysisExplanationGenerator} 빈도 같은 조건으로만 만든다 — enabled=false면 이 빈 자체가
+ * 없으므로, 소비하는 쪽은 {@code Optional<AnalysisExplanationGenerator>}로 주입받아 비어있을 때
+ * 결정적 fallback을 쓰는 구조를 스스로 갖춰야 한다({@code EpisodeAnalysisExplanationService} 참고).
  */
 @Configuration
 @EnableConfigurationProperties(OpenAiProperties.class)
@@ -40,6 +45,12 @@ public class OpenAiClientConfig {
 				.build();
 
 		return new OpenAiClient(restClient, properties.model(), objectMapper);
+	}
+
+	@Bean
+	@ConditionalOnProperty(prefix = "afterglow.openai", name = "enabled", havingValue = "true")
+	AnalysisExplanationGenerator analysisExplanationGenerator(OpenAiClient openAiClient) {
+		return new OpenAiAnalysisExplanationGenerator(openAiClient);
 	}
 
 	private void validate(OpenAiProperties properties) {

@@ -8,7 +8,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.afterglow.domain.episode.analysis.application.EpisodeAnalysisExplanationService;
 import com.afterglow.domain.episode.analysis.application.EpisodeAnalysisService;
+import com.afterglow.domain.episode.analysis.domain.AnalysisExplanationOutcome;
 import com.afterglow.domain.episode.card.domain.ResultCardResult;
 import com.afterglow.global.security.OpenApiConfig;
 
@@ -27,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 public class EpisodeAnalysisController {
 
 	private final EpisodeAnalysisService episodeAnalysisService;
+	private final EpisodeAnalysisExplanationService episodeAnalysisExplanationService;
 
 	/** 이미 분석된 Episode면 재실행하지 않고 기존 결과를 그대로 반환한다(idempotent). */
 	@PostMapping
@@ -41,5 +44,16 @@ public class EpisodeAnalysisController {
 			@AuthenticationPrincipal Long accountId, @PathVariable Long episodeId) {
 		ResultCardResult result = episodeAnalysisService.getResult(accountId, episodeId);
 		return ResponseEntity.ok(EpisodeAnalysisResponse.from(result));
+	}
+
+	/**
+	 * 저장된 분석 결과를 문장으로 설명한다. 새 분석을 실행하지 않고(읽기 전용), OpenAI가 비활성/실패
+	 * 상태여도 결정적 fallback으로 항상 200을 반환한다 — {@code source} 필드로 AI/FALLBACK을 구분한다.
+	 */
+	@GetMapping("/explanation")
+	public ResponseEntity<EpisodeAnalysisExplanationResponse> getExplanation(
+			@AuthenticationPrincipal Long accountId, @PathVariable Long episodeId) {
+		AnalysisExplanationOutcome outcome = episodeAnalysisExplanationService.explain(accountId, episodeId);
+		return ResponseEntity.ok(EpisodeAnalysisExplanationResponse.from(outcome));
 	}
 }
