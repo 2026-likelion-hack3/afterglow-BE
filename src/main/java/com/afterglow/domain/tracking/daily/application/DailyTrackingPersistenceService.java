@@ -25,6 +25,7 @@ public class DailyTrackingPersistenceService {
 		SleepLevel sleepLevel,
 		ConditionLevel conditionLevel,
 		Double temperature,
+		Double minTemperature,
 		Double humidity,
 		Double uvIndex
 	) {
@@ -40,6 +41,7 @@ public class DailyTrackingPersistenceService {
 				sleepLevel,
 				conditionLevel,
 				temperature,
+				minTemperature,
 				humidity,
 				uvIndex
 			);
@@ -52,6 +54,7 @@ public class DailyTrackingPersistenceService {
 			sleepLevel,
 			conditionLevel,
 			temperature,
+			minTemperature,
 			humidity,
 			uvIndex
 		);

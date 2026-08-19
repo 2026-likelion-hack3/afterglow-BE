@@ -46,6 +46,7 @@ public class DailyTrackingService {
 			sleepLevel,
 			conditionLevel,
 			weather.temperature(),
+			weather.minTemperature(),
 			weather.humidity(),
 			weather.uvIndex()
 		);

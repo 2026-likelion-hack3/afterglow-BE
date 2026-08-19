@@ -43,6 +43,8 @@ public class DailyTracking extends BaseEntity {
 
 	private Double temperature;
 
+	private Double minTemperature;
+
 	private Double humidity;
 
 	private Double uvIndex;
@@ -53,6 +55,7 @@ public class DailyTracking extends BaseEntity {
 		SleepLevel sleepLevel,
 		ConditionLevel conditionLevel,
 		Double temperature,
+		Double minTemperature,
 		Double humidity,
 		Double uvIndex
 	) {
@@ -61,6 +64,7 @@ public class DailyTracking extends BaseEntity {
 		this.sleepLevel = sleepLevel;
 		this.conditionLevel = conditionLevel;
 		this.temperature = temperature;
+		this.minTemperature = minTemperature;
 		this.humidity = humidity;
 		this.uvIndex = uvIndex;
 	}
@@ -71,6 +75,7 @@ public class DailyTracking extends BaseEntity {
 		SleepLevel sleepLevel,
 		ConditionLevel conditionLevel,
 		Double temperature,
+		Double minTemperature,
 		Double humidity,
 		Double uvIndex
 	) {
@@ -80,6 +85,7 @@ public class DailyTracking extends BaseEntity {
 			sleepLevel,
 			conditionLevel,
 			temperature,
+			minTemperature,
 			humidity,
 			uvIndex
 		);
@@ -89,12 +95,14 @@ public class DailyTracking extends BaseEntity {
 		SleepLevel sleepLevel,
 		ConditionLevel conditionLevel,
 		Double temperature,
+		Double minTemperature,
 		Double humidity,
 		Double uvIndex
 	) {
 		this.sleepLevel = sleepLevel;
 		this.conditionLevel = conditionLevel;
 		this.temperature = temperature;
+		this.minTemperature = minTemperature;
 		this.humidity = humidity;
 		this.uvIndex = uvIndex;
 	}

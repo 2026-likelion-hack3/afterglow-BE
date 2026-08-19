@@ -29,6 +29,7 @@ public class TrackingQueryService {
 				tracking.getRecordedDate(),
 				tracking.getSleepLevel(),
 				tracking.getTemperature(),
+				tracking.getMinTemperature(),
 				tracking.getHumidity(),
 				tracking.getUvIndex()
 			))

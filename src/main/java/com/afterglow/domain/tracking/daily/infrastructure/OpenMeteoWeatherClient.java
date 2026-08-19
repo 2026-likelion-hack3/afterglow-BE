@@ -38,7 +38,7 @@ public class OpenMeteoWeatherClient implements WeatherClient {
 					+ "&longitude=%s"
 					+ "&start_date=%s"
 					+ "&end_date=%s"
-					+ "&daily=temperature_2m_mean,relative_humidity_2m_mean,uv_index_max"
+					+ "&daily=temperature_2m_mean,temperature_2m_min,relative_humidity_2m_mean,uv_index_max"
 					+ "&timezone=auto",
 				latitude,
 				longitude,
@@ -69,6 +69,7 @@ public class OpenMeteoWeatherClient implements WeatherClient {
 
 			return new WeatherData(
 				daily.path("temperature_2m_mean").get(0).asDouble(),
+				daily.path("temperature_2m_min").get(0).asDouble(),
 				daily.path("relative_humidity_2m_mean").get(0).asDouble(),
 				daily.path("uv_index_max").get(0).asDouble()
 			);

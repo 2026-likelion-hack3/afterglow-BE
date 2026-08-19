@@ -8,6 +8,7 @@ public record TrackingQueryResponse(
 	LocalDate recordedDate,
 	SleepLevel sleepLevel,
 	Double temperature,
+	Double minTemperature,
 	Double humidity,
 	Double uvIndex
 ) {
