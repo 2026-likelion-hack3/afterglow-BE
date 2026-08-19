@@ -78,4 +78,12 @@ public class Episode extends BaseEntity {
 			throw new AfterglowException(ErrorCode.INVALID_REQUEST, "전체 부위는 다른 부위와 함께 선택할 수 없습니다.");
 		}
 	}
+
+	/** 2.4 통합 분석 완료. 문진 완료(INTAKE_COMPLETED) 상태에서만 허용한다 — 이미 ANALYZED면 재실행하지 않는다(idempotent). */
+	public void completeAnalysis() {
+		if (status != EpisodeStatus.INTAKE_COMPLETED) {
+			throw new AfterglowException(ErrorCode.INVALID_EPISODE_STATE);
+		}
+		this.status = EpisodeStatus.ANALYZED;
+	}
 }

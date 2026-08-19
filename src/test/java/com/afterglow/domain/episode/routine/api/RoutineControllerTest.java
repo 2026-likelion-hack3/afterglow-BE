@@ -45,7 +45,7 @@ class RoutineControllerTest {
 	@Test
 	void 정상_요청이면_루틴이_생성되고_201을_받는다() throws Exception {
 		String token = createAnonymousAccountToken();
-		Long episodeId = createIntakeCompletedEpisode(token);
+		Long episodeId = createAnalyzedEpisode(token);
 
 		mockMvc.perform(post("/api/episodes/" + episodeId + "/routine")
 						.header("Authorization", "Bearer " + token)
@@ -73,9 +73,44 @@ class RoutineControllerTest {
 	}
 
 	@Test
-	void 같은_에피소드에_루틴을_두_번_만들면_거부된다() throws Exception {
+	void INTAKE_COMPLETED_상태여도_분석_전이면_루틴_생성이_거부된다() throws Exception {
 		String token = createAnonymousAccountToken();
 		Long episodeId = createIntakeCompletedEpisode(token);
+
+		mockMvc.perform(post("/api/episodes/" + episodeId + "/routine")
+						.header("Authorization", "Bearer " + token)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(defaultRoutineRequest())))
+				.andExpect(status().isConflict());
+	}
+
+	@Test
+	void Episode_생성부터_Intake_Analysis_Routine까지_실제_E2E_흐름이_성공한다() throws Exception {
+		String token = createAnonymousAccountToken();
+
+		Long episodeId = createEpisodeOnly(token);
+		mockMvc.perform(post("/api/episodes/" + episodeId + "/intake")
+						.header("Authorization", "Bearer " + token)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(
+								new IntakeRequest(OnsetPeriod.TODAY, Set.of(BodyPart.CHEEK), "새 앰플", null))))
+				.andExpect(status().isNoContent());
+
+		mockMvc.perform(post("/api/episodes/" + episodeId + "/analysis")
+						.header("Authorization", "Bearer " + token))
+				.andExpect(status().isOk());
+
+		mockMvc.perform(post("/api/episodes/" + episodeId + "/routine")
+						.header("Authorization", "Bearer " + token)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(defaultRoutineRequest())))
+				.andExpect(status().isCreated());
+	}
+
+	@Test
+	void 같은_에피소드에_루틴을_두_번_만들면_거부된다() throws Exception {
+		String token = createAnonymousAccountToken();
+		Long episodeId = createAnalyzedEpisode(token);
 
 		mockMvc.perform(post("/api/episodes/" + episodeId + "/routine")
 						.header("Authorization", "Bearer " + token)
@@ -104,7 +139,7 @@ class RoutineControllerTest {
 	@Test
 	void 다른_계정의_에피소드에는_루틴을_만들_수_없다() throws Exception {
 		String ownerToken = createAnonymousAccountToken();
-		Long episodeId = createIntakeCompletedEpisode(ownerToken);
+		Long episodeId = createAnalyzedEpisode(ownerToken);
 
 		String otherToken = createAnonymousAccountToken();
 
@@ -118,7 +153,7 @@ class RoutineControllerTest {
 	@Test
 	void 다른_계정은_루틴을_조회할_수_없다() throws Exception {
 		String ownerToken = createAnonymousAccountToken();
-		Long episodeId = createIntakeCompletedEpisode(ownerToken);
+		Long episodeId = createAnalyzedEpisode(ownerToken);
 		startRoutine(ownerToken, episodeId);
 
 		String otherToken = createAnonymousAccountToken();
@@ -139,7 +174,7 @@ class RoutineControllerTest {
 	@Test
 	void CONTINUE_항목에_dayNumber가_없으면_400을_받는다() throws Exception {
 		String token = createAnonymousAccountToken();
-		Long episodeId = createIntakeCompletedEpisode(token);
+		Long episodeId = createAnalyzedEpisode(token);
 
 		RoutineCreateRequest invalid = new RoutineCreateRequest(List.of(
 				new RoutineItemRequest(RoutineItemUsage.CONTINUE, null, RoutineTimeSlot.MORNING, 100L)));
@@ -154,7 +189,7 @@ class RoutineControllerTest {
 	@Test
 	void usage가_없으면_400을_받는다() throws Exception {
 		String token = createAnonymousAccountToken();
-		Long episodeId = createIntakeCompletedEpisode(token);
+		Long episodeId = createAnalyzedEpisode(token);
 
 		String body = """
 				{"items": [{"dayNumber": 1, "timeSlot": "MORNING", "productId": 100}]}
@@ -170,7 +205,7 @@ class RoutineControllerTest {
 	@Test
 	void 재조회해도_Day_구성과_날짜가_동일하게_유지된다() throws Exception {
 		String token = createAnonymousAccountToken();
-		Long episodeId = createIntakeCompletedEpisode(token);
+		Long episodeId = createAnalyzedEpisode(token);
 		startRoutine(token, episodeId);
 
 		String first = mockMvc.perform(get("/api/episodes/" + episodeId + "/routine")
@@ -190,7 +225,7 @@ class RoutineControllerTest {
 	@Test
 	void CheckIn_3일치가_모두_좋아졌다이면_Day3_결과가_MAINTAIN이다() throws Exception {
 		String token = createAnonymousAccountToken();
-		Long episodeId = createIntakeCompletedEpisode(token);
+		Long episodeId = createAnalyzedEpisode(token);
 		LocalDate startDate = startRoutine(token, episodeId);
 
 		recordCheckIn(token, episodeId, startDate, CheckInStatus.IMPROVED);
@@ -206,7 +241,7 @@ class RoutineControllerTest {
 	@Test
 	void CheckIn_중_하루라도_나빠졌다이면_Day3_결과가_STOP이다() throws Exception {
 		String token = createAnonymousAccountToken();
-		Long episodeId = createIntakeCompletedEpisode(token);
+		Long episodeId = createAnalyzedEpisode(token);
 		LocalDate startDate = startRoutine(token, episodeId);
 
 		recordCheckIn(token, episodeId, startDate, CheckInStatus.IMPROVED);
@@ -221,7 +256,7 @@ class RoutineControllerTest {
 	@Test
 	void CheckIn이_2일_이하면_Day3_결과가_WITHHELD이다() throws Exception {
 		String token = createAnonymousAccountToken();
-		Long episodeId = createIntakeCompletedEpisode(token);
+		Long episodeId = createAnalyzedEpisode(token);
 		LocalDate startDate = startRoutine(token, episodeId);
 
 		recordCheckIn(token, episodeId, startDate, CheckInStatus.IMPROVED);
@@ -235,7 +270,7 @@ class RoutineControllerTest {
 	@Test
 	void Day3_응답이_비슷하다이면_Day3_결과가_EXTEND이다() throws Exception {
 		String token = createAnonymousAccountToken();
-		Long episodeId = createIntakeCompletedEpisode(token);
+		Long episodeId = createAnalyzedEpisode(token);
 		LocalDate startDate = startRoutine(token, episodeId);
 
 		recordCheckIn(token, episodeId, startDate, CheckInStatus.IMPROVED);
@@ -295,6 +330,15 @@ class RoutineControllerTest {
 						.content(objectMapper.writeValueAsString(
 								new IntakeRequest(OnsetPeriod.TODAY, Set.of(BodyPart.CHEEK), "새 앰플", null))))
 				.andExpect(status().isNoContent());
+		return episodeId;
+	}
+
+	/** Routine 시작 전제조건은 이제 ANALYZED다(INTAKE_COMPLETED → ANALYZED → Routine). */
+	private Long createAnalyzedEpisode(String token) throws Exception {
+		Long episodeId = createIntakeCompletedEpisode(token);
+		mockMvc.perform(post("/api/episodes/" + episodeId + "/analysis")
+						.header("Authorization", "Bearer " + token))
+				.andExpect(status().isOk());
 		return episodeId;
 	}
 
