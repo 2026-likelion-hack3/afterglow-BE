@@ -30,6 +30,9 @@ import com.afterglow.domain.episode.domain.PrimarySymptom;
 import com.afterglow.domain.episode.domain.Severity;
 import com.afterglow.domain.episode.domain.Symptom;
 import com.afterglow.domain.episode.intake.application.EpisodeService;
+import com.afterglow.domain.episode.routine.domain.Routine;
+import com.afterglow.domain.episode.routine.domain.RoutineItem;
+import com.afterglow.domain.episode.routine.domain.RoutineRepository;
 import com.afterglow.domain.onboarding.application.OnboardingService;
 import com.afterglow.domain.onboarding.domain.AgeRange;
 import com.afterglow.domain.onboarding.domain.MenstrualStatus;
@@ -62,6 +65,9 @@ class EpisodeAccountDeletedListenerTest {
 
 	@Autowired
 	private CheckInRepository checkInRepository;
+
+	@Autowired
+	private RoutineRepository routineRepository;
 
 	@Autowired
 	private OnboardingService onboardingService;
@@ -162,6 +168,18 @@ class EpisodeAccountDeletedListenerTest {
 		accountService.deleteAccount(accountId);
 
 		assertThat(checkInRepository.findByEpisodeIdOrderByCheckInDateAsc(episodeId)).isEmpty();
+	}
+
+	@Test
+	void 계정을_삭제하면_그_Episode의_Routine도_삭제된다() {
+		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
+		Long episodeId = episodeRepository.save(Episode.create(accountId, symptom())).getId();
+		routineRepository.save(Routine.create(episodeId, accountId, LocalDate.of(2026, 8, 17),
+				java.util.List.of(RoutineItem.continueItem(1, com.afterglow.domain.episode.routine.domain.RoutineTimeSlot.MORNING, 1L))));
+
+		accountService.deleteAccount(accountId);
+
+		assertThat(routineRepository.findByEpisodeIdAndAccountId(episodeId, accountId)).isEmpty();
 	}
 
 	@Test
