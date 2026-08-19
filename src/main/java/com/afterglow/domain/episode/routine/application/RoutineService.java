@@ -31,10 +31,10 @@ import lombok.RequiredArgsConstructor;
 /**
  * Routine 시작/조회 및 CheckIn·{@link Day3JudgmentEngine} 연결을 담당하는 application 계층.
  *
- * <p>Routine 생성 전제조건("결과 카드가 생성된 상태")을 그대로 검증할 방법이 없다 — Analysis/Card는 DB에
- * 저장하지 않는 순수 함수라(docs/domains/episode.md) Episode 쪽에 "카드까지 생성됨"을 나타내는 상태가
- * 없다. 대신 Episode에 실제로 남아 있는 가장 가까운 신호인 {@code INTAKE_COMPLETED}로 대체한다 — 진짜
- * 전제조건은 Card/Analysis가 영속화되는 시점에 다시 좁혀야 한다(BLOCKED, 보고서 참고).
+ * <p>Routine 생성 전제조건("결과 카드가 생성된 상태")은 이제 {@code EpisodeAnalysisService}가 Episode를
+ * {@link EpisodeStatus#ANALYZED}로 전이시키는 시점과 정확히 일치한다(2026-08-20) — 정상 상태 전이는
+ * {@code INTAKE_COMPLETED → ANALYZED → Routine}이다. {@code INTAKE_COMPLETED}는 더 이상 허용하지
+ * 않는다 — 계속 허용하면 Analysis를 건너뛰고 Routine을 시작할 수 있기 때문이다.
  */
 @Service
 @RequiredArgsConstructor
@@ -50,7 +50,7 @@ public class RoutineService {
 	@Transactional
 	public Routine start(Long accountId, Long episodeId, RoutineCreateInput input) {
 		Episode episode = requireOwnedEpisode(accountId, episodeId);
-		if (episode.getStatus() != EpisodeStatus.INTAKE_COMPLETED) {
+		if (episode.getStatus() != EpisodeStatus.ANALYZED) {
 			throw new AfterglowException(ErrorCode.INVALID_EPISODE_STATE);
 		}
 		if (routineRepository.existsByEpisodeId(episodeId)) {
