@@ -69,6 +69,8 @@
   - **제품 조합**: 충돌 태그를 가진 제품이 같은 시간대에 배치되면 강. 충돌은 있지만 아침/저녁으로 분리되면 중. 충돌이 없으면 약.
   - **수면 / 날씨**: 관찰 5회 이상 + 일치 비율 70% 이상이면 강. 관찰 3~4회 또는 일치 비율 50~70%면 중. 그 미만이면 약. **70% 경계값 확정(2026-08-16)**: "강" 조건(관찰≥5 그리고 일치율≥70%)을 먼저 평가하고, 이를 만족하지 못하면 "중" 조건(관찰 3~4 또는 일치율 50~70%, 양 끝 포함)을 본다 — 즉 정확히 70%는 관찰이 5회 이상일 때만 강이고, 5회 미만이면 중으로 fallback된다. 정수 관측 횟수에서는 "관찰 5회 미만 + 일치율 정확히 70%"는 산술적으로 나올 수 없다(70%를 정수 분수로 표현하려면 분모가 최소 10 이상이어야 한다) — 이 조합 자체가 불가능하다는 점도 확인했다.
 - ~~후보별 근거 강도를 점수로 환산하는 기준(강=3/중=2/약=1)이 확정됐다~~ — **2026-08-19 폐기**: 아래 "순위/보류/확신 단계" 참고. 점수 환산과 그에 기반한 격차(gap) 계산은 더 이상 쓰지 않는다.
+- **증상 시작일(symptomStartDate) 환산 규칙 확정(2026-08-20)**: Intake 문진 1번(`onsetPeriod`: 오늘/2~3일 전/1주 전/2주 이상)을 분석 기준일 기준 실제 날짜로 환산한다 — 오늘=분석 기준일, 2~3일 전=3일 전, 1주 전=7일 전, 2주 이상=14일 전. 이전에는 이 환산 규칙이 없어 TODAY가 아니면 timing 계산 자체를 신뢰할 수 없다고 보고 강도를 WEAK로 고정하는 보수적 제한(`symptomStartDateReliable`)이 있었으나, 규칙이 확정되며 그 플래그를 제거했다. 구현: `EpisodeAnalysisService.symptomStartDateOf`.
+- **날씨 "일치" 판정 규칙 확정(2026-08-20)**: 날씨 조건 충족+`WORSE`/`SAME` → 일치, 조건 충족+`IMPROVED` → 불일치. 조건 미충족+`IMPROVED` → 일치, 조건 미충족+`SAME`/`WORSE` → 불일치(`WeatherMatchRule`). 다만 "날씨 조건 충족" 자체를 정하는 temperature/minTemperature/humidity/uvIndex threshold는 여전히 Manyfast에 없어(아래 Pending Decisions 참고), Weather candidate는 이번에도 활성화하지 않았다 — match 규칙만 코드/테스트로 미리 반영해 뒀다.
 - **후보 수집(candidate 생성) 조건**이 확정됐다(2026-08-13 추가 답변):
   - 대상 없음(예: 최근 새로 쓰는 제품 없음, 충돌 조합 없음) → 후보 목록에서 제외, 사유 `대상 없음`. 이 조건은 **4종 후보 공통**이다.
   - **기록 7일 미만 → 후보 목록에서 제외, 사유 `기록 부족`. 이 조건은 수면/날씨 2종에만 적용된다 — 제품/제품 조합에는 적용되지 않는다(2026-08-18 정정, 아래 "왜 바뀌었나" 참고).**
@@ -150,7 +152,7 @@
 - **(2026-08-18 신규) `usageStartDate` ↔ Vanity `openedAt` 대응 여부** — Manyfast에 "개봉일 = 사용 시작일"이라는 명시적 대응이 없다. `ProductCandidateInput.usageStartDate` 개념은 코드에 유지하되, 실제 어떤 Vanity 데이터로 채울지는 이 질문이 풀려야 정한다.
 - **(2026-08-18 신규) PRODUCT/COMBINATION Result Card의 근거 기간 표시 기준** — 7-day coverage 게이트가 수면/날씨 전용으로 정정되면서, 제품/제품 조합 카드에서 "N일치 기록" 대신 무엇을 근거 기간으로 보여줄지(또는 아예 보여주지 않을지)가 기획에 정의돼 있지 않다.
 - **(2026-08-18 신규) 수면 raw-level(SleepLevel: WELL/NORMAL/POOR) → matched-observation 판정 규칙** — `ObservationCandidateInput.matchedObservationCount`를 실제 Tracking 데이터로 채우려면 어떤 SleepLevel(들)을 "증상과 일치"로 볼지 규칙이 필요한데 Manyfast에 없다. Manyfast 예시 문구("잠이 5시간 아래였던 날")는 시간 단위인데 실제 저장 데이터는 3단계 coarse enum이라 예시와 데이터 모델 간 불일치도 있다.
-- **(2026-08-18 신규) 날씨(온도/습도/자외선) matching threshold** — Tracking은 raw 수치만 저장 명세돼 있고, 어떤 값을 증상과 "일치"로 볼지 threshold가 Manyfast에 없다(수면과 동일한 성격의 공백).
+- **(2026-08-18 신규, 2026-08-20 부분 해소) 날씨(온도/습도/자외선) matching threshold** — "일치" 판정 규칙 자체는 확정되어 구현했다(`WeatherMatchRule` 참고: 조건 충족+WORSE/SAME→일치, 조건 충족+IMPROVED→불일치, 조건 미충족+IMPROVED→일치, 조건 미충족+SAME/WORSE→불일치). 다만 그 입력인 "날씨 조건 충족" 여부를 정하는 temperature/minTemperature/humidity/uvIndex의 threshold 자체는 여전히 Manyfast에 없다(Tracking은 raw 수치만 저장 명세돼 있다) — 이 threshold가 와야 Weather candidate를 실제로 활성화할 수 있다.
 
 **Implementation Decisions Pending (기획 blocker 아님 — backend 구현 시점에 정할 것)**
 

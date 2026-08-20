@@ -80,14 +80,14 @@ public final class RuleBasedCauseAnalysisEngine implements CauseAnalysisEngine {
 	}
 
 	/**
-	 * {@link ReferenceCertainty#FALLBACK}(개봉 시기 자체가 없어 등록일로 대체)이거나
-	 * {@code symptomStartDateReliable}이 false(증상 시작일을 신뢰할 수 없음 — onsetPeriod가 TODAY가
-	 * 아니라 실제 날짜 환산 규칙이 없는 상태, 2026-08-20 신설·후속 기획 확정 대기)면 timing 계산 없이
-	 * WEAK로 고정한다. 그 외(현재는 {@link ReferenceCertainty#ESTIMATED} 하나뿐 — Vanity가 정확한 사용
-	 * 시작일을 아직 주지 않는다)는 기존 timing 규칙으로 강도를 계산한 뒤 한 단계 downgrade한다(2026-08-20 확정).
+	 * {@link ReferenceCertainty#FALLBACK}(개봉 시기 자체가 없어 등록일로 대체)이면 timing 계산 없이 WEAK로
+	 * 고정한다. 그 외(현재는 {@link ReferenceCertainty#ESTIMATED} 하나뿐 — Vanity가 정확한 사용 시작일을
+	 * 아직 주지 않는다)는 기존 timing 규칙으로 강도를 계산한 뒤 한 단계 downgrade한다(2026-08-20 확정).
+	 * symptomStartDate는 onsetPeriod → 날짜 환산 규칙이 확정되며(2026-08-20) 모든 onsetPeriod 값에서 실제
+	 * 날짜로 계산되므로, 여기서는 더 이상 별도로 신뢰도를 검사하지 않는다.
 	 */
 	private EvidenceStrength productStrength(ProductCandidateInput product) {
-		if (product.referenceCertainty() == ReferenceCertainty.FALLBACK || !product.symptomStartDateReliable()) {
+		if (product.referenceCertainty() == ReferenceCertainty.FALLBACK) {
 			return EvidenceStrength.WEAK;
 		}
 		EvidenceStrength timingStrength = productTimingStrength(product);

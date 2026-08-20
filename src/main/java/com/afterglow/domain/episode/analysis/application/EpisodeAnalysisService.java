@@ -71,17 +71,13 @@ import lombok.RequiredArgsConstructor;
  * threshold가 기획에 아직 없어서다(docs/domains/episode.md Pending Decisions). 기획 답변이 오면
  * {@code loadWeatherObservation}만 교체하면 된다 — 나머지 파이프라인은 이미 준비돼 있다.
  *
- * <p><b>symptomStartDate 미확정 — 후속 기획 확정 지점(2026-08-20, Known limitation)</b>:
+ * <p><b>symptomStartDate — onsetPeriod → 날짜 환산 확정(2026-08-20, 기획 확정)</b>:
  * {@code Intake.onsetPeriod}(증상 시작 시기 4구간: TODAY/2~3일 전/1주 전/2주 이상)를 실제 날짜로
- * 환산하는 규칙이 Manyfast/코드 어디에도 없다(OpeningPeriod와 달리 이번 결정에도 포함되지 않음) — 새
- * 환산 규칙을 임의로 발명하지 않는다. 그래서 {@code symptomStartDate}는 항상 {@code analysisDate}
- * (episode 생성일)를 쓰지만, {@code onsetPeriod != TODAY}일 때는 이 값이 실제 증상 시작일보다 늦다
- * (analysisDate ≥ 실제 증상 시작일이 항상 성립하므로). 이 오차를 그대로 두면 "실제로는 증상이 이미 시작된
- * 뒤에 쓰기 시작한 제품"이 "증상 전에 시작"한 것처럼 잘못 판정될 위험(false positive, STRONG/MEDIUM 오생성)이
- * 있다 — 그래서 {@code onsetPeriod == TODAY}일 때만 {@code symptomStartDateReliable=true}로 넘기고,
- * 그 외에는 false로 넘겨 {@link RuleBasedCauseAnalysisEngine}이 timing 계산 없이 WEAK로 고정하게 한다
- * (가장 보수적인 제한 — {@link ProductCandidateInput#symptomStartDateReliable} 참고). onsetPeriod → 날짜
- * 환산 규칙이 기획에서 확정되면 이 보수적 제한을 없애고 정확한 {@code symptomStartDate}를 계산하면 된다.
+ * 환산하는 규칙이 확정됐다 — TODAY=분석 기준일, 2~3일 전=3일 전, 1주 전=7일 전, 2주 이상=14일 전
+ * ({@link #symptomStartDateOf}). 이전에는 이 환산 규칙이 없어 TODAY가 아니면 {@code symptomStartDate}를
+ * 신뢰할 수 없는 값으로 보고 {@link RuleBasedCauseAnalysisEngine}이 timing 계산 없이 WEAK로 고정하는
+ * 보수적 제한({@code symptomStartDateReliable})이 있었으나, 규칙이 확정되며 그 플래그를 제거했다 — 이제
+ * 모든 onsetPeriod 값에서 실제 날짜를 계산해 기존 Product timing 강도 계산에 그대로 사용한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -251,8 +247,7 @@ public class EpisodeAnalysisService {
 
 	private AnalysisInput buildAnalysisInput(Long accountId, Episode episode) {
 		LocalDate analysisDate = episode.getCreatedAt().toLocalDate();
-		LocalDate symptomStartDate = analysisDate;
-		boolean symptomStartDateReliable = episode.getIntake().getOnsetPeriod() == OnsetPeriod.TODAY;
+		LocalDate symptomStartDate = symptomStartDateOf(episode.getIntake().getOnsetPeriod(), analysisDate);
 
 		List<VanityQueryResponse> products = vanityQueryService.findProductsByAccountId(accountId);
 		List<VanityProductReference> references = products.stream()
@@ -263,10 +258,24 @@ public class EpisodeAnalysisService {
 
 		return new AnalysisInput(
 				analysisDate,
-				loadProductCandidates(references, routines, checkInDates, analysisDate, symptomStartDate, symptomStartDateReliable),
+				loadProductCandidates(references, routines, checkInDates, analysisDate, symptomStartDate),
 				loadCombinationCandidates(references, routines, checkInDates, analysisDate),
 				loadSleepObservation(accountId, analysisDate),
 				loadWeatherObservation(accountId, analysisDate));
+	}
+
+	/**
+	 * onsetPeriod → 실제 증상 시작일 환산(2026-08-20 기획 확정): 오늘=분석 기준일, 2~3일 전=3일 전,
+	 * 1주 전=7일 전, 2주 이상=14일 전. 새 기간 추정 규칙(예: "2주 이상"을 14일보다 더 먼 날짜로 보는 것)은
+	 * 추가하지 않는다 — 확정된 값 그대로만 쓴다.
+	 */
+	private static LocalDate symptomStartDateOf(OnsetPeriod onsetPeriod, LocalDate analysisDate) {
+		return switch (onsetPeriod) {
+			case TODAY -> analysisDate;
+			case TWO_TO_THREE_DAYS_AGO -> analysisDate.minusDays(3);
+			case ONE_WEEK_AGO -> analysisDate.minusDays(7);
+			case TWO_WEEKS_OR_MORE -> analysisDate.minusDays(14);
+		};
 	}
 
 	/** 모든 후보의 관측 window가 들어올 수 있는 가장 이른 날짜(가장 오래된 referenceDate)부터 분석 기준일까지 한 번에 조회한다. */
@@ -283,7 +292,7 @@ public class EpisodeAnalysisService {
 
 	private List<ProductCandidateInput> loadProductCandidates(
 			List<VanityProductReference> references, List<Routine> routines, Set<LocalDate> checkInDates,
-			LocalDate analysisDate, LocalDate symptomStartDate, boolean symptomStartDateReliable) {
+			LocalDate analysisDate, LocalDate symptomStartDate) {
 		if (references.isEmpty()) {
 			return List.of();
 		}
@@ -306,7 +315,6 @@ public class EpisodeAnalysisService {
 							symptomStartDate,
 							(int) changedProductCount,
 							reference.certainty(),
-							symptomStartDateReliable,
 							window.coverageDays(checkInDates));
 				})
 				.toList();
@@ -459,11 +467,15 @@ public class EpisodeAnalysisService {
 	}
 
 	/**
-	 * BLOCKED(threshold만) — Tracking raw 15일 조회와 CheckIn 정렬({@link WeatherObservationDay#align})은
-	 * 실제로 연결했다. temperature/minTemperature/humidity/uvIndex 중 무엇을, 어떤 값으로 "일치"로 볼지
-	 * threshold가 기획에 아직 없어 matchedObservationCount/candidate 생성은 하지 않는다 — 임의로 추측해서
-	 * 만들지 않는다(사용자 지시). threshold가 오면 이 메서드 안에서 {@code alignedDays}를 이용해 candidate를
-	 * 만들면 된다.
+	 * BLOCKED(threshold만, 2026-08-20 재확인 — 여전히 미확정) — Tracking raw 15일 조회와 CheckIn 정렬
+	 * ({@link WeatherObservationDay#align})은 실제로 연결했다. "일치" 판정 규칙 자체는 확정되어
+	 * {@link WeatherMatchRule}로 구현했지만(조건 충족+WORSE/SAME→일치, 조건 충족+IMPROVED→불일치, 조건
+	 * 미충족+IMPROVED→일치, 조건 미충족+SAME/WORSE→불일치), 그 입력인 conditionMet — temperature/
+	 * minTemperature/humidity/uvIndex 중 무엇을, 어떤 값으로 "날씨 조건 충족"으로 볼지 — 의 threshold가
+	 * Manyfast에 여전히 없어 matchedObservationCount/candidate 생성은 하지 않는다 — 임의로 추측해서 만들지
+	 * 않는다(사용자 지시). threshold가 오면 이 메서드 안에서 {@code alignedDays} 각 날짜의 conditionMet을
+	 * 계산하고 {@link WeatherMatchRule#matches}에 넘겨 candidate를 만들면 된다 — 나머지 파이프라인(강도/
+	 * ranking/confidence/HOLD)은 이미 {@link RuleBasedCauseAnalysisEngine}이 공통으로 처리한다.
 	 */
 	private ObservationCandidateInput loadWeatherObservation(Long accountId, LocalDate analysisDate) {
 		LocalDate from = analysisDate.minusDays(WEATHER_OBSERVATION_WINDOW_DAYS - 1);

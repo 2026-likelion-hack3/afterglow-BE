@@ -146,24 +146,66 @@ class EpisodeAnalysisServiceTest {
 		TimingEvidence evidence = (TimingEvidence) result.cards().get(0).evidence();
 		assertThat(evidence.productId()).isEqualTo(productId);
 		assertThat(evidence.usageStartDate()).isEqualTo(analysisDate.minusDays(14));
+		// onsetPeriod 기본값(TODAY)은 symptomStartDate 환산 규칙(2026-08-20 기획 확정)에서 분석 기준일 그대로다.
+		assertThat(evidence.symptomStartDate()).isEqualTo(analysisDate);
 		// timing만 보면 STRONG이지만 OpeningPeriod 추정값이라 한 단계 downgrade되어 MEDIUM → confidence는 NORMAL.
 		assertThat(result.confidence()).isEqualTo(com.afterglow.domain.episode.analysis.domain.Confidence.NORMAL);
 	}
 
-	/**
-	 * onsetPeriod → symptomStartDate 환산 규칙이 아직 없어(후속 기획 확정 대기, Known limitation) 보수적으로
-	 * 제한한다 — {@code RECENT_제품과_CheckIn_기록이_있으면_실제_PRODUCT_candidate가_채택된다}와 완전히 같은
-	 * Vanity/CheckIn 데이터인데 onsetPeriod만 TODAY가 아니면, timing상 STRONG/MEDIUM이 나올 조건이어도 WEAK로
-	 * 고정돼 HOLD가 된다(false positive 방지).
-	 */
+	// ------------------------------------------------------------------
+	// onsetPeriod → symptomStartDate 환산(2026-08-20 기획 확정): TODAY=분석 기준일, 2~3일 전=3일 전,
+	// 1주 전=7일 전, 2주 이상=14일 전. 아래 세 테스트는 위 RECENT 테스트와 완전히 같은 Vanity/CheckIn
+	// 데이터(제품 referenceDate = 분석 기준일-14일)에 onsetPeriod만 바꿔, 확정된 날짜가 실제로 Product
+	// timing 계산에 쓰이는지 검증한다 — 이전에는 TODAY가 아니면 무조건 WEAK로 강제됐었다(제거됨).
+	// ------------------------------------------------------------------
+
 	@Test
-	void onsetPeriod가_TODAY가_아니면_동일한_제품_데이터로도_HOLD가_된다() {
+	void onsetPeriod가_2에서_3일_전이면_symptomStartDate는_3일_전이고_timing이_정상_계산된다() {
+		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
+		LocalDate analysisDate = LocalDate.now();
+		saveProduct(accountId, OpeningPeriod.RECENT, UsageTiming.MORNING, Set.of());
+		saveCheckInOnAnyEpisode(accountId, analysisDate.minusDays(10));
+
+		Long episodeId = intakeCompletedEpisode(accountId, OnsetPeriod.TWO_TO_THREE_DAYS_AGO);
+		ResultCardResult result = episodeAnalysisService.analyze(accountId, episodeId);
+
+		assertThat(result.hold()).isFalse();
+		TimingEvidence evidence = (TimingEvidence) result.cards().get(0).evidence();
+		assertThat(evidence.symptomStartDate()).isEqualTo(analysisDate.minusDays(3));
+		assertThat(result.confidence()).isEqualTo(com.afterglow.domain.episode.analysis.domain.Confidence.NORMAL);
+	}
+
+	@Test
+	void onsetPeriod가_1주_전이면_symptomStartDate는_7일_전이고_timing이_정상_계산된다() {
 		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
 		LocalDate analysisDate = LocalDate.now();
 		saveProduct(accountId, OpeningPeriod.RECENT, UsageTiming.MORNING, Set.of());
 		saveCheckInOnAnyEpisode(accountId, analysisDate.minusDays(10));
 
 		Long episodeId = intakeCompletedEpisode(accountId, OnsetPeriod.ONE_WEEK_AGO);
+		ResultCardResult result = episodeAnalysisService.analyze(accountId, episodeId);
+
+		assertThat(result.hold()).isFalse();
+		TimingEvidence evidence = (TimingEvidence) result.cards().get(0).evidence();
+		assertThat(evidence.symptomStartDate()).isEqualTo(analysisDate.minusDays(7));
+		assertThat(result.confidence()).isEqualTo(com.afterglow.domain.episode.analysis.domain.Confidence.NORMAL);
+	}
+
+	/**
+	 * 2주 이상(symptomStartDate=분석 기준일-14일)이 RECENT 제품(referenceDate=분석 기준일-14일)과 같은
+	 * 날짜가 되어 "사용 시작이 증상 시작보다 이전"이 성립하지 않는다(같은 날은 이전이 아니다) — timing 불일치로
+	 * WEAK가 되어 HOLD다. 이전(플래그 기반)에도 HOLD였겠지만, 지금은 "날짜를 몰라서"가 아니라 "확정된 날짜로
+	 * 계산해보니 실제로 시점이 어긋나서" HOLD라는 점이 다르다 — 위 두 테스트(3일 전/7일 전)가 같은 제품
+	 * 데이터로 정상 채택됨을 이미 보여주므로, 이 케이스만 유독 막혀 있지 않다는 것도 함께 확인된다.
+	 */
+	@Test
+	void onsetPeriod가_2주_이상이면_symptomStartDate는_14일_전이고_같은_기준일_제품과_timing이_어긋나_보류된다() {
+		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
+		LocalDate analysisDate = LocalDate.now();
+		saveProduct(accountId, OpeningPeriod.RECENT, UsageTiming.MORNING, Set.of());
+		saveCheckInOnAnyEpisode(accountId, analysisDate.minusDays(10));
+
+		Long episodeId = intakeCompletedEpisode(accountId, OnsetPeriod.TWO_WEEKS_OR_MORE);
 		ResultCardResult result = episodeAnalysisService.analyze(accountId, episodeId);
 
 		assertThat(result.hold()).isTrue();

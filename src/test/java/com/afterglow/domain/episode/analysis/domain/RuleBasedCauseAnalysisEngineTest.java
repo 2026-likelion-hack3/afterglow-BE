@@ -49,7 +49,7 @@ class RuleBasedCauseAnalysisEngineTest {
 	@Test
 	void product_coverage가_0이면_INSUFFICIENT_RECORDS로_제외된다() {
 		ProductCandidateInput product = new ProductCandidateInput(
-				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 0L);
+				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, 0L);
 		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(product), List.of(), null, null));
 
 		assertThat(result.candidates()).noneMatch(c -> c.type() == CandidateType.PRODUCT);
@@ -59,9 +59,9 @@ class RuleBasedCauseAnalysisEngineTest {
 	@Test
 	void product_여러_후보_중_coverage가_0인_후보만_개별_제외된다() {
 		ProductCandidateInput covered = new ProductCandidateInput(
-				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 3L);
+				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, 3L);
 		ProductCandidateInput uncovered = new ProductCandidateInput(
-				2L, SYMPTOM_START.minusDays(5), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 0L);
+				2L, SYMPTOM_START.minusDays(5), SYMPTOM_START, 1, ReferenceCertainty.EXACT, 0L);
 		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(covered, uncovered), List.of(), null, null));
 
 		assertThat(result.candidates()).hasSize(1);
@@ -94,7 +94,7 @@ class RuleBasedCauseAnalysisEngineTest {
 	@Test
 	void referenceCertainty가_ESTIMATED이면_timing_강도가_한_단계_downgrade된다() {
 		ProductCandidateInput product = new ProductCandidateInput(
-				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.ESTIMATED, true, 1L);
+				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.ESTIMATED, 1L);
 		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(product), List.of(), null, null));
 
 		assertThat(result.candidates().get(0).strength()).isEqualTo(EvidenceStrength.MEDIUM);
@@ -103,7 +103,7 @@ class RuleBasedCauseAnalysisEngineTest {
 	@Test
 	void referenceCertainty가_ESTIMATED이고_timing이_MEDIUM이면_downgrade되어_WEAK가_된다() {
 		ProductCandidateInput product = new ProductCandidateInput(
-				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 2, ReferenceCertainty.ESTIMATED, true, 1L);
+				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 2, ReferenceCertainty.ESTIMATED, 1L);
 		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(product), List.of(), null, null));
 
 		assertThat(result.candidates().get(0).strength()).isEqualTo(EvidenceStrength.WEAK);
@@ -112,33 +112,10 @@ class RuleBasedCauseAnalysisEngineTest {
 	@Test
 	void referenceCertainty가_FALLBACK이면_timing과_무관하게_WEAK로_고정된다() {
 		ProductCandidateInput product = new ProductCandidateInput(
-				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.FALLBACK, true, 1L);
+				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.FALLBACK, 1L);
 		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(product), List.of(), null, null));
 
 		assertThat(result.candidates().get(0).strength()).isEqualTo(EvidenceStrength.WEAK);
-	}
-
-	// ------------------------------------------------------------------
-	// symptomStartDateReliable(2026-08-20 신설, 후속 기획 확정 대기) — onsetPeriod가 TODAY가 아니면
-	// symptomStartDate를 신뢰할 수 없으므로 timing이 STRONG 조건이어도 WEAK로 고정한다(가장 보수적인 제한).
-	// ------------------------------------------------------------------
-
-	@Test
-	void symptomStartDateReliable이_false이면_timing이_STRONG_조건이어도_WEAK로_고정된다() {
-		ProductCandidateInput product = new ProductCandidateInput(
-				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, false, 1L);
-		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(product), List.of(), null, null));
-
-		assertThat(result.candidates().get(0).strength()).isEqualTo(EvidenceStrength.WEAK);
-	}
-
-	@Test
-	void symptomStartDateReliable이_true이면_기존_timing_규칙대로_STRONG이_나온다() {
-		ProductCandidateInput product = new ProductCandidateInput(
-				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 1L);
-		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(product), List.of(), null, null));
-
-		assertThat(result.candidates().get(0).strength()).isEqualTo(EvidenceStrength.STRONG);
 	}
 
 	// ------------------------------------------------------------------
@@ -182,7 +159,7 @@ class RuleBasedCauseAnalysisEngineTest {
 
 	private AnalysisResult analyzeSingleProduct(LocalDate usageStartDate, int changedProductCountInWindow) {
 		ProductCandidateInput product = new ProductCandidateInput(
-				1L, usageStartDate, SYMPTOM_START, changedProductCountInWindow, ReferenceCertainty.EXACT, true, 1L);
+				1L, usageStartDate, SYMPTOM_START, changedProductCountInWindow, ReferenceCertainty.EXACT, 1L);
 		return engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(product), List.of(), null, null));
 	}
 
@@ -353,8 +330,8 @@ class RuleBasedCauseAnalysisEngineTest {
 
 	@Test
 	void PRODUCT가_같은_강도로_동점이면_usageStartDate가_최근인_후보가_선택된다() {
-		ProductCandidateInput older = new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 1L);
-		ProductCandidateInput moreRecent = new ProductCandidateInput(2L, SYMPTOM_START.minusDays(5), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 1L);
+		ProductCandidateInput older = new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, 1L);
+		ProductCandidateInput moreRecent = new ProductCandidateInput(2L, SYMPTOM_START.minusDays(5), SYMPTOM_START, 1, ReferenceCertainty.EXACT, 1L);
 		AnalysisInput input = new AnalysisInput(ANALYSIS_DATE, List.of(older, moreRecent), List.of(), null, null);
 
 		AnalysisResult result = engine.analyze(input);
@@ -365,8 +342,8 @@ class RuleBasedCauseAnalysisEngineTest {
 
 	@Test
 	void PRODUCT가_강도와_usageStartDate까지_같으면_다른_tie_break가_없어_HOLD이다() {
-		ProductCandidateInput productA = new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 1L);
-		ProductCandidateInput productB = new ProductCandidateInput(2L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 1L);
+		ProductCandidateInput productA = new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, 1L);
+		ProductCandidateInput productB = new ProductCandidateInput(2L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, 1L);
 		AnalysisInput input = new AnalysisInput(ANALYSIS_DATE, List.of(productA, productB), List.of(), null, null);
 
 		AnalysisResult result = engine.analyze(input);
@@ -419,9 +396,9 @@ class RuleBasedCauseAnalysisEngineTest {
 
 	private ProductCandidateInput toProductWithStrength(EvidenceStrength strength) {
 		return switch (strength) {
-			case STRONG -> new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 1L);
-			case MEDIUM -> new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 2, ReferenceCertainty.EXACT, true, 1L);
-			case WEAK -> new ProductCandidateInput(1L, SYMPTOM_START.plusDays(1), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 1L);
+			case STRONG -> new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, 1L);
+			case MEDIUM -> new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 2, ReferenceCertainty.EXACT, 1L);
+			case WEAK -> new ProductCandidateInput(1L, SYMPTOM_START.plusDays(1), SYMPTOM_START, 1, ReferenceCertainty.EXACT, 1L);
 		};
 	}
 
@@ -562,7 +539,7 @@ class RuleBasedCauseAnalysisEngineTest {
 	@Test
 	void product_후보의_coverageDays가_입력값_그대로_보존된다() {
 		ProductCandidateInput product = new ProductCandidateInput(
-				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 5L);
+				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, 5L);
 		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(product), List.of(), null, null));
 
 		assertThat(result.candidates().get(0).coverageDays()).isEqualTo(5L);
