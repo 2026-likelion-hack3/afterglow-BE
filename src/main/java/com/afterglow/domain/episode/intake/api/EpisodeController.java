@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.afterglow.global.security.OpenApiConfig;
+import com.afterglow.domain.episode.application.EpisodeMultiSummaryService;
 import com.afterglow.domain.episode.application.EpisodeSummaryService;
 import com.afterglow.domain.episode.intake.application.EpisodeService;
 import com.afterglow.domain.episode.domain.Intake;
@@ -29,6 +30,7 @@ public class EpisodeController {
 
 	private final EpisodeService episodeService;
 	private final EpisodeSummaryService episodeSummaryService;
+	private final EpisodeMultiSummaryService episodeMultiSummaryService;
 
 	@PostMapping
 	public ResponseEntity<EpisodeResponse> createEpisode(
@@ -42,6 +44,12 @@ public class EpisodeController {
 	@GetMapping
 	public ResponseEntity<List<EpisodeSummaryResponse>> getEpisodes(@AuthenticationPrincipal Long accountId) {
 		return ResponseEntity.ok(episodeSummaryService.getEpisodes(accountId));
+	}
+
+	/** Figma E3("3회차를 모아봤어요") — 결제와 무관하게 데이터만 반환한다(EpisodeMultiSummaryResponse 참고). */
+	@GetMapping("/multi-summary")
+	public ResponseEntity<EpisodeMultiSummaryResponse> getMultiSummary(@AuthenticationPrincipal Long accountId) {
+		return ResponseEntity.ok(episodeMultiSummaryService.getMultiSummary(accountId));
 	}
 
 	@PostMapping("/{episodeId}/intake")
