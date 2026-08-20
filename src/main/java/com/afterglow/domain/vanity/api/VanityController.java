@@ -16,9 +16,13 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.afterglow.domain.vanity.api.request.OcrTextRequest;
 import com.afterglow.domain.vanity.api.request.ProductCreateRequest;
 import com.afterglow.domain.vanity.api.response.ProductCreateResponse;
+import com.afterglow.domain.vanity.api.response.ProductRegistrationDraftResponse;
 import com.afterglow.domain.vanity.api.response.ProductResponse;
+import com.afterglow.domain.vanity.application.ProductRegistrationDraftResult;
+import com.afterglow.domain.vanity.application.ProductRegistrationDraftService;
 import com.afterglow.domain.vanity.application.VanityService;
 import com.afterglow.domain.vanity.api.response.OcrResponse;
 import com.afterglow.domain.vanity.application.VanityOcrService;
@@ -35,6 +39,7 @@ public class VanityController {
 
 	private final VanityService vanityService;
 	private final VanityOcrService vanityOcrService;
+	private final ProductRegistrationDraftService productRegistrationDraftService;
 
 	@PostMapping
 	public ResponseEntity<ProductCreateResponse> createProduct(
@@ -102,6 +107,18 @@ public class VanityController {
 
 		return ResponseEntity.ok(
 			new OcrResponse(rawText)
+		);
+	}
+
+	@PostMapping("/ocr/structure")
+	public ResponseEntity<ProductRegistrationDraftResponse> structureOcrText(
+		@Valid @RequestBody OcrTextRequest request) {
+
+		ProductRegistrationDraftResult result =
+			productRegistrationDraftService.createDraft(request.rawText());
+
+		return ResponseEntity.ok(
+			ProductRegistrationDraftResponse.from(result)
 		);
 	}
 }
