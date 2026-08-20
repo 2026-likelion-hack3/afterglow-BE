@@ -15,5 +15,8 @@ public interface EpisodeRepository {
 	List<Episode> findByAccountIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtAsc(
 			Long accountId, LocalDateTime from, LocalDateTime toExclusive);
 
+	/** E1(기록 목록) 최신순 조회용 — 동시각이면 id 내림차순으로 tie-break한다. */
+	List<Episode> findByAccountIdOrderByCreatedAtDescIdDesc(Long accountId);
+
 	void deleteByAccountId(Long accountId);
 }
