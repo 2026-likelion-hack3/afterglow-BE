@@ -18,10 +18,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * OpenAI Responses API({@code POST /responses}) 호출 어댑터.
- * 아직 실제 소비자가 없어 패키지 밖으로 노출하지 않는다 — 첫 실제 use case가 생기면 그 use case 전용
- * application 계층 port가 이 클래스를 감싸는 방향으로 간다(이 클래스 자체를 범용 API로 넓히지 않는다).
+ * 첫 실제 소비자({@code OpenAiAnalysisExplanationGenerator})가 이 패키지 안에 있어 그때는 package-private로
+ * 충분했다. 두 번째 소비자({@code com.afterglow.domain.vanity.infrastructure.OpenAiProductRegistrationDraftGenerator})는
+ * 다른 패키지에 있어 최소한으로 public을 열었다 — 이 클래스 자체를 범용 API로 넓히는 리팩터링은 하지 않았고,
+ * 각 소비자는 여전히 자기 use case 전용 port/schema를 통해서만 이 클래스를 쓴다.
  */
-class OpenAiClient {
+public class OpenAiClient {
 
 	private static final Logger log = LoggerFactory.getLogger(OpenAiClient.class);
 	private static final String REQUEST_ID_HEADER = "x-request-id";
@@ -40,7 +42,7 @@ class OpenAiClient {
 	}
 
 	/** {@code input}을 user 메시지로 보내고, {@code schema}로 구조화된 응답을 {@code responseType}으로 역직렬화해 돌려준다. */
-	<T> T createStructuredResponse(String input, OpenAiJsonSchema schema, Class<T> responseType) {
+	public <T> T createStructuredResponse(String input, OpenAiJsonSchema schema, Class<T> responseType) {
 		OpenAiResponseRequest request = new OpenAiResponseRequest(
 				model,
 				List.of(new OpenAiInputMessage("user", input)),

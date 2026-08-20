@@ -4,7 +4,8 @@ import java.util.Map;
 
 /**
  * Responses API structured output({@code text.format})에 넘길 JSON Schema.
- * 실제 비즈니스 스키마는 이번 범위에 없다 — 첫 실제 use case가 자신의 schema를 들고 이 타입을 채워 호출한다.
+ * 각 use case가 자신의 schema를 들고 이 타입을 채워 호출한다 — 다른 패키지의 소비자를 위해 최소한으로
+ * public을 열었을 뿐, schema 내용 자체는 여전히 각 use case 전용이다.
  */
-record OpenAiJsonSchema(String name, Map<String, Object> schema) {
+public record OpenAiJsonSchema(String name, Map<String, Object> schema) {
 }

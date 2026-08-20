@@ -48,7 +48,10 @@ Current Status에 적은 엔티티가 현재 코드에 실제로 존재하는 �
 - `Product.photoKey`는 단일 필드(전면 사진 1장 기준)다 — 전면+성분표 2장 구조로 바꾸려면 필드 추가가 필요하다.
 - Google Cloud Vision 연동 코드가 없다.
 - 성분표(뒷면) 사진 처리 구조가 없다.
-- 성분 동의어 사전(DB 테이블/seed 데이터)이 없다.
+- 성분 동의어 사전은 `RETINOL`/`ACID`/`VITAMIN_C` 3종만 `InteractionTagMatcher`(코드 내 상수, git으로 관리)로 1차 구현됐다 —
+  DB 테이블/seed 데이터 형태는 아직 아니고, 키워드도 소수(각 태그당 6~13개)만 curation된 첫 버전이라 확장이
+  필요하다. `HIGH_CONCENTRATION`/`LOW_IRRITATION`은 성분명만으로 판단 불가해 의도적으로 매칭 대상에서 제외했다
+  (Pending Decisions 참고).
 
 ## Pending Decisions
 
