@@ -102,4 +102,19 @@ public class Story extends BaseEntity {
 			lifeStagePublic
 		);
 	}
+
+	/**
+	 * 공감 토글(2026-08-20)에서만 호출한다 — {@code StoryLike} row 생성/삭제와 항상 같은 트랜잭션에서
+	 * 한 쌍으로 호출되어야 likeCount와 공감 이력이 어긋나지 않는다({@code StoryService.toggleLike} 참고).
+	 */
+	public void increaseLikeCount() {
+		this.likeCount++;
+	}
+
+	/** 0 미만으로 내려가지 않는다 — 이미 0인데 취소가 들어오는 비정상 상황을 조용히 무시한다. */
+	public void decreaseLikeCount() {
+		if (this.likeCount > 0) {
+			this.likeCount--;
+		}
+	}
 }

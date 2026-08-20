@@ -50,6 +50,8 @@ public class SecurityConfig {
 						// preflight는 브라우저가 인증 헤더 없이 보내므로, 실제 API 인가와 별개로 항상 통과시킨다.
 						.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 						.requestMatchers(PERMIT_ALL_PATHS).permitAll()
+						// 이야기 조회(GET)만 비로그인 허용 — 작성(POST)은 그대로 인증이 필요하므로 PERMIT_ALL_PATHS에 넣지 않고 메서드로 한정한다.
+						.requestMatchers(HttpMethod.GET, "/api/stories", "/api/stories/**").permitAll()
 						.anyRequest().authenticated())
 				.exceptionHandling(handler -> handler.authenticationEntryPoint(jwtAuthenticationEntryPoint))
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

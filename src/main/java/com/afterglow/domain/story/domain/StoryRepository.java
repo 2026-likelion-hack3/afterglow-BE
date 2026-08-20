@@ -12,4 +12,7 @@ public interface StoryRepository {
 	List<Story> findAll();
 
 	List<Story> findByAccountId(Long accountId);
+
+	/** 이야기 목록 — 최신순(생성일 내림차순, 동시각이면 id 내림차순으로 tie-break). */
+	List<Story> findAllByOrderByCreatedAtDescIdDesc();
 }
