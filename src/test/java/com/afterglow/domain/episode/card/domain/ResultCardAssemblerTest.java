@@ -35,6 +35,10 @@ class ResultCardAssemblerTest {
 		// PRODUCT는 coverage 게이트가 없어 CandidateResult.coverageDays 자체가 항상 null이다(2026-08-18 확정) —
 		// 카드가 임의 숫자를 만들어 채우지 않는지 여기서 함께 확인한다.
 		assertThat(result.cards().get(0).coverageDays()).isNull();
+		// CONTINUE_USE 제품 목록은 Vanity 데이터가 필요해 EpisodeAnalysisService가 채운다 — 순수 함수인
+		// ResultCardAssembler 자신은 항상 빈 목록만 만든다(2026-08-20 RC1 hotfix로도 이 경계는 바뀌지 않았다).
+		assertThat(result.cards().get(1).type()).isEqualTo(ResultCardType.CONTINUE_USE);
+		assertThat(result.cards().get(1).continueUseProductIds()).isEmpty();
 	}
 
 	@Test
