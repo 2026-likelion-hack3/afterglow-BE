@@ -13,5 +13,8 @@ public interface CheckInRepository {
 
 	List<CheckIn> findByEpisodeIdOrderByCheckInDateAsc(Long episodeId);
 
+	/** Analysis의 coverage 계산 전용 — 계정의 여러 Episode에 걸친 CheckIn을 기간으로 조회한다(둘 다 포함). */
+	List<CheckIn> findByEpisodeIdInAndCheckInDateBetween(Collection<Long> episodeIds, LocalDate from, LocalDate to);
+
 	void deleteByEpisodeIdIn(Collection<Long> episodeIds);
 }

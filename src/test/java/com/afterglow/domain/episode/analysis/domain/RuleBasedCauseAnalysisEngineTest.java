@@ -12,9 +12,9 @@ class RuleBasedCauseAnalysisEngineTest {
 	private static final LocalDate ANALYSIS_DATE = LocalDate.of(2026, 8, 16);
 	private static final LocalDate SYMPTOM_START = LocalDate.of(2026, 8, 16);
 
-	/** analysisDate 기준 정확히 7 calendar days 커버리지(SLEEP/WEATHER 게이트를 항상 통과) — 규칙 자체를 검증하는 테스트에서 게이트는 관심사가 아니므로 고정값을 쓴다. */
-	private static final RecordCoverage SUFFICIENT_COVERAGE = new RecordCoverage(ANALYSIS_DATE.minusDays(6));
-	private static final RecordCoverage INSUFFICIENT_COVERAGE = new RecordCoverage(ANALYSIS_DATE.minusDays(5));
+	/** 정확히 7건(SLEEP/WEATHER 게이트를 항상 통과) — 규칙 자체를 검증하는 테스트에서 게이트는 관심사가 아니므로 고정값을 쓴다. */
+	private static final RecordCoverage SUFFICIENT_COVERAGE = new RecordCoverage(7);
+	private static final RecordCoverage INSUFFICIENT_COVERAGE = new RecordCoverage(6);
 
 	private final RuleBasedCauseAnalysisEngine engine = new RuleBasedCauseAnalysisEngine();
 
@@ -33,28 +33,112 @@ class RuleBasedCauseAnalysisEngineTest {
 	}
 
 	// ------------------------------------------------------------------
-	// PRODUCT/COMBINATION은 coverage 게이트가 없다(2026-08-18 확정, Manyfast 통합 분석 F-ZSPZHH
-	// updateData [후보 수집] 규칙: 7일 게이트는 수면/날씨에만 명시돼 있음).
+	// PRODUCT/COMBINATION coverage 게이트(2026-08-20 확정) — window 안에 실제 CheckIn이 있으면 통과,
+	// 0이면 후보별로 INSUFFICIENT_RECORDS 제외. (2026-08-18에는 게이트 자체가 없었으나 이후 정정됨.)
 	// ------------------------------------------------------------------
 
 	@Test
-	void product_대상이_있으면_coverage_개념_없이_바로_candidate로_채택된다() {
+	void product_coverage가_있으면_candidate로_채택된다() {
 		AnalysisResult result = analyzeSingleProduct(SYMPTOM_START.minusDays(10), 1);
 
 		assertThat(result.candidates()).hasSize(1);
 		assertThat(result.candidates().get(0).type()).isEqualTo(CandidateType.PRODUCT);
-		assertThat(result.candidates().get(0).strength()).isEqualTo(EvidenceStrength.STRONG);
 		assertThat(result.exclusions()).noneMatch(e -> e.type() == CandidateType.PRODUCT);
 	}
 
 	@Test
-	void combination_대상이_있으면_coverage_개념_없이_바로_candidate로_채택된다() {
+	void product_coverage가_0이면_INSUFFICIENT_RECORDS로_제외된다() {
+		ProductCandidateInput product = new ProductCandidateInput(
+				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 0L);
+		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(product), List.of(), null, null));
+
+		assertThat(result.candidates()).noneMatch(c -> c.type() == CandidateType.PRODUCT);
+		assertThat(result.exclusions()).contains(new CandidateExclusion(CandidateType.PRODUCT, ExclusionReason.INSUFFICIENT_RECORDS, "1"));
+	}
+
+	@Test
+	void product_여러_후보_중_coverage가_0인_후보만_개별_제외된다() {
+		ProductCandidateInput covered = new ProductCandidateInput(
+				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 3L);
+		ProductCandidateInput uncovered = new ProductCandidateInput(
+				2L, SYMPTOM_START.minusDays(5), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 0L);
+		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(covered, uncovered), List.of(), null, null));
+
+		assertThat(result.candidates()).hasSize(1);
+		assertThat(((TimingEvidence) result.candidates().get(0).evidence()).productId()).isEqualTo(1L);
+		assertThat(result.exclusions()).contains(new CandidateExclusion(CandidateType.PRODUCT, ExclusionReason.INSUFFICIENT_RECORDS, "2"));
+	}
+
+	@Test
+	void combination_coverage가_있으면_candidate로_채택된다() {
 		AnalysisResult result = analyzeSingleCombination(ConflictPlacement.SAME_TIME_SLOT);
 
 		assertThat(result.candidates()).hasSize(1);
 		assertThat(result.candidates().get(0).type()).isEqualTo(CandidateType.COMBINATION);
-		assertThat(result.candidates().get(0).strength()).isEqualTo(EvidenceStrength.STRONG);
 		assertThat(result.exclusions()).noneMatch(e -> e.type() == CandidateType.COMBINATION);
+	}
+
+	@Test
+	void combination_coverage가_0이면_INSUFFICIENT_RECORDS로_제외된다() {
+		CombinationCandidateInput combo = new CombinationCandidateInput("RETINOL", "ACID", ConflictPlacement.SAME_TIME_SLOT, 0L);
+		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(), List.of(combo), null, null));
+
+		assertThat(result.candidates()).noneMatch(c -> c.type() == CandidateType.COMBINATION);
+		assertThat(result.exclusions()).contains(new CandidateExclusion(CandidateType.COMBINATION, ExclusionReason.INSUFFICIENT_RECORDS, "RETINOL+ACID"));
+	}
+
+	// ------------------------------------------------------------------
+	// PRODUCT referenceCertainty(2026-08-20 확정) — ESTIMATED는 한 단계 downgrade, FALLBACK은 WEAK 고정.
+	// ------------------------------------------------------------------
+
+	@Test
+	void referenceCertainty가_ESTIMATED이면_timing_강도가_한_단계_downgrade된다() {
+		ProductCandidateInput product = new ProductCandidateInput(
+				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.ESTIMATED, true, 1L);
+		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(product), List.of(), null, null));
+
+		assertThat(result.candidates().get(0).strength()).isEqualTo(EvidenceStrength.MEDIUM);
+	}
+
+	@Test
+	void referenceCertainty가_ESTIMATED이고_timing이_MEDIUM이면_downgrade되어_WEAK가_된다() {
+		ProductCandidateInput product = new ProductCandidateInput(
+				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 2, ReferenceCertainty.ESTIMATED, true, 1L);
+		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(product), List.of(), null, null));
+
+		assertThat(result.candidates().get(0).strength()).isEqualTo(EvidenceStrength.WEAK);
+	}
+
+	@Test
+	void referenceCertainty가_FALLBACK이면_timing과_무관하게_WEAK로_고정된다() {
+		ProductCandidateInput product = new ProductCandidateInput(
+				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.FALLBACK, true, 1L);
+		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(product), List.of(), null, null));
+
+		assertThat(result.candidates().get(0).strength()).isEqualTo(EvidenceStrength.WEAK);
+	}
+
+	// ------------------------------------------------------------------
+	// symptomStartDateReliable(2026-08-20 신설, 후속 기획 확정 대기) — onsetPeriod가 TODAY가 아니면
+	// symptomStartDate를 신뢰할 수 없으므로 timing이 STRONG 조건이어도 WEAK로 고정한다(가장 보수적인 제한).
+	// ------------------------------------------------------------------
+
+	@Test
+	void symptomStartDateReliable이_false이면_timing이_STRONG_조건이어도_WEAK로_고정된다() {
+		ProductCandidateInput product = new ProductCandidateInput(
+				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, false, 1L);
+		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(product), List.of(), null, null));
+
+		assertThat(result.candidates().get(0).strength()).isEqualTo(EvidenceStrength.WEAK);
+	}
+
+	@Test
+	void symptomStartDateReliable이_true이면_기존_timing_규칙대로_STRONG이_나온다() {
+		ProductCandidateInput product = new ProductCandidateInput(
+				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 1L);
+		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(product), List.of(), null, null));
+
+		assertThat(result.candidates().get(0).strength()).isEqualTo(EvidenceStrength.STRONG);
 	}
 
 	// ------------------------------------------------------------------
@@ -98,7 +182,7 @@ class RuleBasedCauseAnalysisEngineTest {
 
 	private AnalysisResult analyzeSingleProduct(LocalDate usageStartDate, int changedProductCountInWindow) {
 		ProductCandidateInput product = new ProductCandidateInput(
-				1L, usageStartDate, SYMPTOM_START, changedProductCountInWindow);
+				1L, usageStartDate, SYMPTOM_START, changedProductCountInWindow, ReferenceCertainty.EXACT, true, 1L);
 		return engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(product), List.of(), null, null));
 	}
 
@@ -128,7 +212,7 @@ class RuleBasedCauseAnalysisEngineTest {
 	}
 
 	private AnalysisResult analyzeSingleCombination(ConflictPlacement placement) {
-		CombinationCandidateInput combination = new CombinationCandidateInput("RETINOL", "ACID", placement);
+		CombinationCandidateInput combination = new CombinationCandidateInput("RETINOL", "ACID", placement, 1L);
 		return engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(), List.of(combination), null, null));
 	}
 
@@ -245,7 +329,7 @@ class RuleBasedCauseAnalysisEngineTest {
 
 	@Test
 	void COMBINATION과_SLEEP이_같은_강도면_type_priority로_COMBINATION이_선택된다() {
-		CombinationCandidateInput combination = new CombinationCandidateInput("RETINOL", "ACID", ConflictPlacement.SAME_TIME_SLOT);
+		CombinationCandidateInput combination = new CombinationCandidateInput("RETINOL", "ACID", ConflictPlacement.SAME_TIME_SLOT, 1L);
 		ObservationCandidateInput sleep = new ObservationCandidateInput(10, 7, SUFFICIENT_COVERAGE);
 		AnalysisInput input = new AnalysisInput(ANALYSIS_DATE, List.of(), List.of(combination), sleep, null);
 
@@ -269,8 +353,8 @@ class RuleBasedCauseAnalysisEngineTest {
 
 	@Test
 	void PRODUCT가_같은_강도로_동점이면_usageStartDate가_최근인_후보가_선택된다() {
-		ProductCandidateInput older = new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1);
-		ProductCandidateInput moreRecent = new ProductCandidateInput(2L, SYMPTOM_START.minusDays(5), SYMPTOM_START, 1);
+		ProductCandidateInput older = new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 1L);
+		ProductCandidateInput moreRecent = new ProductCandidateInput(2L, SYMPTOM_START.minusDays(5), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 1L);
 		AnalysisInput input = new AnalysisInput(ANALYSIS_DATE, List.of(older, moreRecent), List.of(), null, null);
 
 		AnalysisResult result = engine.analyze(input);
@@ -281,8 +365,8 @@ class RuleBasedCauseAnalysisEngineTest {
 
 	@Test
 	void PRODUCT가_강도와_usageStartDate까지_같으면_다른_tie_break가_없어_HOLD이다() {
-		ProductCandidateInput productA = new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1);
-		ProductCandidateInput productB = new ProductCandidateInput(2L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1);
+		ProductCandidateInput productA = new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 1L);
+		ProductCandidateInput productB = new ProductCandidateInput(2L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 1L);
 		AnalysisInput input = new AnalysisInput(ANALYSIS_DATE, List.of(productA, productB), List.of(), null, null);
 
 		AnalysisResult result = engine.analyze(input);
@@ -302,8 +386,8 @@ class RuleBasedCauseAnalysisEngineTest {
 	 */
 	@Test
 	void COMBINATION이_강도와_conflictPlacement까지_같으면_HOLD이다() {
-		CombinationCandidateInput comboA = new CombinationCandidateInput("RETINOL", "ACID", ConflictPlacement.SAME_TIME_SLOT);
-		CombinationCandidateInput comboB = new CombinationCandidateInput("VITAMIN_C", "HIGH_CONCENTRATION", ConflictPlacement.SAME_TIME_SLOT);
+		CombinationCandidateInput comboA = new CombinationCandidateInput("RETINOL", "ACID", ConflictPlacement.SAME_TIME_SLOT, 1L);
+		CombinationCandidateInput comboB = new CombinationCandidateInput("VITAMIN_C", "HIGH_CONCENTRATION", ConflictPlacement.SAME_TIME_SLOT, 1L);
 		AnalysisInput input = new AnalysisInput(ANALYSIS_DATE, List.of(), List.of(comboA, comboB), null, null);
 
 		AnalysisResult result = engine.analyze(input);
@@ -315,7 +399,7 @@ class RuleBasedCauseAnalysisEngineTest {
 
 	@Test
 	void 다른_타입이_MEDIUM으로_동점이어도_HOLD가_아니라_type_priority로_결정된다() {
-		CombinationCandidateInput combination = new CombinationCandidateInput("RETINOL", "ACID", ConflictPlacement.SPLIT_AM_PM);
+		CombinationCandidateInput combination = new CombinationCandidateInput("RETINOL", "ACID", ConflictPlacement.SPLIT_AM_PM, 1L);
 		ObservationCandidateInput sleep = new ObservationCandidateInput(3, 1, SUFFICIENT_COVERAGE);
 		AnalysisInput input = new AnalysisInput(ANALYSIS_DATE, List.of(), List.of(combination), sleep, null);
 
@@ -335,9 +419,9 @@ class RuleBasedCauseAnalysisEngineTest {
 
 	private ProductCandidateInput toProductWithStrength(EvidenceStrength strength) {
 		return switch (strength) {
-			case STRONG -> new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1);
-			case MEDIUM -> new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 2);
-			case WEAK -> new ProductCandidateInput(1L, SYMPTOM_START.plusDays(1), SYMPTOM_START, 1);
+			case STRONG -> new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 1L);
+			case MEDIUM -> new ProductCandidateInput(1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 2, ReferenceCertainty.EXACT, true, 1L);
+			case WEAK -> new ProductCandidateInput(1L, SYMPTOM_START.plusDays(1), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 1L);
 		};
 	}
 
@@ -347,7 +431,7 @@ class RuleBasedCauseAnalysisEngineTest {
 			case MEDIUM -> ConflictPlacement.SPLIT_AM_PM;
 			case WEAK -> ConflictPlacement.NONE;
 		};
-		return new CombinationCandidateInput("RETINOL", "ACID", placement);
+		return new CombinationCandidateInput("RETINOL", "ACID", placement, 1L);
 	}
 
 	// ------------------------------------------------------------------
@@ -416,7 +500,7 @@ class RuleBasedCauseAnalysisEngineTest {
 
 	@Test
 	void 서로_다른_타입이_동점이면_후보_목록에서_type_우선순위가_앞선다() {
-		CombinationCandidateInput combination = new CombinationCandidateInput("RETINOL", "ACID", ConflictPlacement.SPLIT_AM_PM);
+		CombinationCandidateInput combination = new CombinationCandidateInput("RETINOL", "ACID", ConflictPlacement.SPLIT_AM_PM, 1L);
 		ObservationCandidateInput weather = new ObservationCandidateInput(3, 1, SUFFICIENT_COVERAGE);
 		AnalysisInput input = new AnalysisInput(ANALYSIS_DATE, List.of(), List.of(combination), null, weather);
 
@@ -472,27 +556,29 @@ class RuleBasedCauseAnalysisEngineTest {
 	}
 
 	// ------------------------------------------------------------------
-	// CandidateResult.coverageDays — SLEEP/WEATHER만 실제 값을 갖고 PRODUCT/COMBINATION은 항상 null
-	// (2026-08-18 확정, Manyfast 통합 분석 F-ZSPZHH updateData [후보 수집] 규칙 재확인)
+	// CandidateResult.coverageDays — 4종 모두 실제 값을 갖는다(2026-08-20 확정, 계산 방식은 타입별로 다름).
 	// ------------------------------------------------------------------
 
 	@Test
-	void product_후보의_coverageDays는_null이다() {
-		AnalysisResult result = analyzeSingleProduct(SYMPTOM_START.minusDays(10), 1);
+	void product_후보의_coverageDays가_입력값_그대로_보존된다() {
+		ProductCandidateInput product = new ProductCandidateInput(
+				1L, SYMPTOM_START.minusDays(10), SYMPTOM_START, 1, ReferenceCertainty.EXACT, true, 5L);
+		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(product), List.of(), null, null));
 
-		assertThat(result.candidates().get(0).coverageDays()).isNull();
+		assertThat(result.candidates().get(0).coverageDays()).isEqualTo(5L);
 	}
 
 	@Test
-	void combination_후보의_coverageDays는_null이다() {
-		AnalysisResult result = analyzeSingleCombination(ConflictPlacement.SAME_TIME_SLOT);
+	void combination_후보의_coverageDays가_입력값_그대로_보존된다() {
+		CombinationCandidateInput combo = new CombinationCandidateInput("RETINOL", "ACID", ConflictPlacement.SAME_TIME_SLOT, 4L);
+		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(), List.of(combo), null, null));
 
-		assertThat(result.candidates().get(0).coverageDays()).isNull();
+		assertThat(result.candidates().get(0).coverageDays()).isEqualTo(4L);
 	}
 
 	@Test
 	void sleep_후보의_coverageDays가_보존된다() {
-		RecordCoverage coverage = new RecordCoverage(ANALYSIS_DATE.minusDays(9));
+		RecordCoverage coverage = new RecordCoverage(10);
 		ObservationCandidateInput sleep = new ObservationCandidateInput(10, 7, coverage);
 
 		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(), List.of(), sleep, null));
@@ -502,7 +588,7 @@ class RuleBasedCauseAnalysisEngineTest {
 
 	@Test
 	void weather_후보의_coverageDays가_보존된다() {
-		RecordCoverage coverage = new RecordCoverage(ANALYSIS_DATE.minusDays(9));
+		RecordCoverage coverage = new RecordCoverage(10);
 		ObservationCandidateInput weather = new ObservationCandidateInput(10, 7, coverage);
 
 		AnalysisResult result = engine.analyze(new AnalysisInput(ANALYSIS_DATE, List.of(), List.of(), null, weather));
