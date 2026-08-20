@@ -53,9 +53,10 @@ import com.afterglow.global.exception.NotFoundException;
 
 /**
  * 2026-08-20부터 Vanity/CheckIn/Routine/Tracking 실제 연동이 들어갔다 — raw data가 전혀 없으면 여전히
- * HOLD(NO_TARGET)이고(orchestration의 안전한 기본 동작), Vanity 제품/CheckIn/Routine/Sleep 이력을 실제로
- * 채우면 그 데이터를 근거로 candidate가 생성되는지까지 이 클래스에서 검증한다. Weather는 매칭 threshold
- * 미확정으로 여전히 candidate를 만들지 않는다(raw 조회/CheckIn 정렬은 별도 {@code WeatherObservationDayTest} 참고).
+ * HOLD(NO_TARGET)이고(orchestration의 안전한 기본 동작), Vanity 제품/CheckIn/Routine/Sleep/Weather 이력을
+ * 실제로 채우면 그 데이터를 근거로 candidate가 생성되는지까지 이 클래스에서 검증한다. Weather의 conditionMet
+ * threshold 자체(온도/습도/UV 각 조건)는 {@code WeatherConditionRuleTest}에서 단위로 검증하고, 여기서는
+ * 실제 Tracking/CheckIn 데이터로 WEATHER candidate가 채택되는지만 확인한다.
  */
 @SpringBootTest
 @Transactional
@@ -520,7 +521,9 @@ class EpisodeAnalysisServiceTest {
 		LocalDate analysisDate = LocalDate.now();
 		for (long i = 0; i < 7; i++) {
 			LocalDate date = analysisDate.minusDays(i);
-			saveDailyTracking(accountId, date, SleepLevel.WELL);
+			// 습도 30(<40, 날씨 조건 항상 충족)으로 두면 IMPROVED가 매일 계속돼 날씨는 매일 "불일치"(WEAK)가
+			// 되어 SLEEP과 섞이지 않는다(2026-08-21 Weather 활성화 이후 이 테스트를 SLEEP 전용으로 격리하기 위함).
+			saveDailyTracking(accountId, date, SleepLevel.WELL, 25.0, 18.0, 30.0, 5.0);
 			saveCheckInOnAnyEpisode(accountId, date, CheckInStatus.IMPROVED);
 		}
 
@@ -532,13 +535,19 @@ class EpisodeAnalysisServiceTest {
 		assertThat(result.confidence()).isEqualTo(com.afterglow.domain.episode.analysis.domain.Confidence.HIGH);
 	}
 
+	/**
+	 * 2026-08-21 Weather 활성화 이후 정정: DailyTracking은 수면/날씨가 같은 레코드라 CheckIn이 있는 날은
+	 * 항상 WEATHER도 관측 대상이 된다 — "정말 아무 후보도 없는" NO_TARGET은 더 이상 이 시나리오로 재현되지
+	 * 않는다(습도 30 고정 + IMPROVED 고정으로 날씨는 매일 불일치라 WEAK 후보가 하나 존재 → HOLD는 유지되지만
+	 * 사유는 INCONCLUSIVE_EVIDENCE). SLEEP이 NORMAL이라 관측 대상에서 제외되는 동작 자체는 그대로 검증한다.
+	 */
 	@Test
 	void NORMAL_수면은_관측_대상에서_제외되어_CheckIn이_있어도_SLEEP_candidate가_생기지_않는다() {
 		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
 		LocalDate analysisDate = LocalDate.now();
 		for (long i = 0; i < 7; i++) {
 			LocalDate date = analysisDate.minusDays(i);
-			saveDailyTracking(accountId, date, SleepLevel.NORMAL);
+			saveDailyTracking(accountId, date, SleepLevel.NORMAL, 25.0, 18.0, 30.0, 5.0);
 			saveCheckInOnAnyEpisode(accountId, date, CheckInStatus.IMPROVED);
 		}
 
@@ -546,7 +555,7 @@ class EpisodeAnalysisServiceTest {
 		ResultCardResult result = episodeAnalysisService.analyze(accountId, episodeId);
 
 		assertThat(result.hold()).isTrue();
-		assertThat(result.holdReason()).isEqualTo(ResultCardHoldReason.NO_TARGET);
+		assertThat(result.holdReason()).isEqualTo(ResultCardHoldReason.INCONCLUSIVE_EVIDENCE);
 	}
 
 	/**
@@ -595,7 +604,15 @@ class EpisodeAnalysisServiceTest {
 		assertThat(evidence.matchedObservationCount()).isLessThanOrEqualTo(evidence.observationCount());
 	}
 
-	/** 회귀 테스트(C) — 7일 동안 Tracking은 매일 있어도 그중 3일이 NORMAL이면 실제 관측 가능일은 4일뿐이라 coverage 게이트를 통과하지 못한다. */
+	/**
+	 * 회귀 테스트(C) — 7일 동안 Tracking은 매일 있어도 그중 3일이 NORMAL이면 SLEEP의 실제 관측 가능일은
+	 * 4일뿐이라 coverage 게이트를 통과하지 못해 SLEEP은 제외된다(INSUFFICIENT_RECORDS).
+	 *
+	 * <p><b>2026-08-21 Weather 활성화 이후 정정</b>: 같은 7일 모두 CheckIn이 있어 WEATHER는 (NORMAL 여부와
+	 * 무관하게) coverage 7을 그대로 채운다 — 즉 SLEEP만 제외됐을 뿐 후보가 완전히 없는 상태(candidates
+	 * empty)는 아니라서 holdReason은 더 이상 INSUFFICIENT_RECORDS가 아니라 INCONCLUSIVE_EVIDENCE다(습도 30
+	 * 고정 + IMPROVED 고정으로 WEATHER는 매일 불일치라 WEAK 후보 하나만 존재).
+	 */
 	@Test
 	void NORMAL을_제외한_실제_관측_가능일만_coverage에_포함된다_C() {
 		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
@@ -603,16 +620,78 @@ class EpisodeAnalysisServiceTest {
 		for (long i = 0; i < 7; i++) {
 			LocalDate date = analysisDate.minusDays(i);
 			SleepLevel sleepLevel = i < 3 ? SleepLevel.NORMAL : SleepLevel.WELL;
-			saveDailyTracking(accountId, date, sleepLevel);
+			saveDailyTracking(accountId, date, sleepLevel, 25.0, 18.0, 30.0, 5.0);
 			saveCheckInOnAnyEpisode(accountId, date, CheckInStatus.IMPROVED);
 		}
 
 		Long episodeId = intakeCompletedEpisode(accountId);
 		ResultCardResult result = episodeAnalysisService.analyze(accountId, episodeId);
 
-		// 실제 관측 가능일 = 4일(NORMAL 3일 제외) < 7 → INSUFFICIENT_RECORDS.
 		assertThat(result.hold()).isTrue();
-		assertThat(result.holdReason()).isEqualTo(ResultCardHoldReason.INSUFFICIENT_RECORDS);
+		assertThat(result.holdReason()).isEqualTo(ResultCardHoldReason.INCONCLUSIVE_EVIDENCE);
+	}
+
+	// ------------------------------------------------------------------
+	// Weather 실제 연동(2026-08-21 threshold 확정)
+	// ------------------------------------------------------------------
+
+	@Test
+	void 낮은_습도와_WORSE가_7일_모두_일치하면_WEATHER_candidate가_STRONG으로_채택된다() {
+		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
+		LocalDate analysisDate = LocalDate.now();
+		for (long i = 0; i < 7; i++) {
+			LocalDate date = analysisDate.minusDays(i);
+			// 수면은 NORMAL(관측 대상 제외)로 두어 SLEEP candidate가 섞이지 않게 한다. 습도 30% < 40% threshold로 조건 충족.
+			saveDailyTracking(accountId, date, SleepLevel.NORMAL, 25.0, 18.0, 30.0, 3.0);
+			saveCheckInOnAnyEpisode(accountId, date, CheckInStatus.WORSE);
+		}
+
+		Long episodeId = intakeCompletedEpisode(accountId);
+		ResultCardResult result = episodeAnalysisService.analyze(accountId, episodeId);
+
+		assertThat(result.hold()).isFalse();
+		assertThat(result.cards().get(0).causeType()).isEqualTo(com.afterglow.domain.episode.analysis.domain.CandidateType.WEATHER);
+		assertThat(result.confidence()).isEqualTo(com.afterglow.domain.episode.analysis.domain.Confidence.HIGH);
+	}
+
+	@Test
+	void 전날_대비_기온_5도_하락도_WEATHER_조건_충족에_반영된다() {
+		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
+		LocalDate analysisDate = LocalDate.now();
+		// 8일 연속 매일 정확히 5도씩 하락하는 기온(45→10) — target 7일(오늘~6일 전) 각각의 "전날"이 항상 5도
+		// 더 높아 온도 하락 조건만으로 충족된다. 습도/최저기온/UV는 미충족 값으로 고정해 다른 그룹이 섞이지 않게 한다.
+		for (long k = 0; k <= 7; k++) {
+			LocalDate date = analysisDate.minusDays(k);
+			double temperature = 45.0 - (7 - k) * 5.0;
+			saveDailyTracking(accountId, date, SleepLevel.NORMAL, temperature, 18.0, 50.0, 3.0);
+		}
+		for (long i = 0; i < 7; i++) {
+			saveCheckInOnAnyEpisode(accountId, analysisDate.minusDays(i), CheckInStatus.SAME);
+		}
+
+		Long episodeId = intakeCompletedEpisode(accountId);
+		ResultCardResult result = episodeAnalysisService.analyze(accountId, episodeId);
+
+		assertThat(result.hold()).isFalse();
+		assertThat(result.cards().get(0).causeType()).isEqualTo(com.afterglow.domain.episode.analysis.domain.CandidateType.WEATHER);
+	}
+
+	@Test
+	void 조건_미충족인데_증상이_계속되면_WEATHER_불일치로_HOLD된다() {
+		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
+		LocalDate analysisDate = LocalDate.now();
+		for (long i = 0; i < 7; i++) {
+			LocalDate date = analysisDate.minusDays(i);
+			// 습도 50(>=40), 최저기온 18(>=5), UV 3(<6), 전날 대비 변화 없음 — 모든 조건 미충족인데 매일 SAME(안 나아짐) → 불일치.
+			saveDailyTracking(accountId, date, SleepLevel.NORMAL, 25.0, 18.0, 50.0, 3.0);
+			saveCheckInOnAnyEpisode(accountId, date, CheckInStatus.SAME);
+		}
+
+		Long episodeId = intakeCompletedEpisode(accountId);
+		ResultCardResult result = episodeAnalysisService.analyze(accountId, episodeId);
+
+		// conditionMet=false + SAME 매일 → WeatherMatchRule상 매일 불일치(matched=0) → WEAK → 다른 candidate가 없어 결국 HOLD.
+		assertThat(result.hold()).isTrue();
 	}
 
 	// ------------------------------------------------------------------
@@ -765,7 +844,13 @@ class EpisodeAnalysisServiceTest {
 	}
 
 	private void saveDailyTracking(Long accountId, LocalDate recordedDate, SleepLevel sleepLevel) {
+		saveDailyTracking(accountId, recordedDate, sleepLevel, 25.0, 18.0, 50.0, 5.0);
+	}
+
+	private void saveDailyTracking(
+			Long accountId, LocalDate recordedDate, SleepLevel sleepLevel,
+			double temperature, double minTemperature, double humidity, double uvIndex) {
 		dailyTrackingRepository.save(DailyTracking.create(
-				accountId, recordedDate, sleepLevel, ConditionLevel.NORMAL, 25.0, 18.0, 50.0, 5.0));
+				accountId, recordedDate, sleepLevel, ConditionLevel.NORMAL, temperature, minTemperature, humidity, uvIndex));
 	}
 }

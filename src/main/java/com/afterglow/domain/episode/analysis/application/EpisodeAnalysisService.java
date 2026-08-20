@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -62,14 +63,11 @@ import lombok.RequiredArgsConstructor;
  * {@link RuleBasedCauseAnalysisEngine} 실행 → {@link ResultCardAssembler}로 카드 조립 → 저장 → 반환.
  * 이미 {@code ANALYZED}면 재실행하지 않고 저장된 결과를 그대로 돌려준다(idempotent, 기존 설계 그대로).
  *
- * <p><b>Vanity/Tracking/CheckIn 실제 연동(2026-08-20)</b>: {@code loadProductCandidates}/
- * {@code loadCombinationCandidates}/{@code loadSleepObservation}은 {@link VanityQueryService}·
- * {@link CombinationRuleRepository}·{@link TrackingQueryService}·{@link CheckInService}·
- * {@link RoutineProductLifecycle}로 실제 데이터를 채운다. {@code loadWeatherObservation}만 여전히
- * "대상 없음"을 반환한다 — Tracking raw 조회/CheckIn 정렬({@link WeatherObservationDay#align})까지는
- * 실제로 연결했지만, temperature/minTemperature/humidity/uvIndex 중 무엇을, 어떤 값으로 "일치"로 볼지
- * threshold가 기획에 아직 없어서다(docs/domains/episode.md Pending Decisions). 기획 답변이 오면
- * {@code loadWeatherObservation}만 교체하면 된다 — 나머지 파이프라인은 이미 준비돼 있다.
+ * <p><b>Vanity/Tracking/CheckIn 실제 연동(2026-08-20, Weather threshold는 2026-08-21 추가 확정)</b>:
+ * {@code loadProductCandidates}/{@code loadCombinationCandidates}/{@code loadSleepObservation}/
+ * {@code loadWeatherObservation} 전부 {@link VanityQueryService}·{@link CombinationRuleRepository}·
+ * {@link TrackingQueryService}·{@link CheckInService}·{@link RoutineProductLifecycle}로 실제
+ * 데이터를 채운다. Weather의 "조건 충족" 판정 threshold는 {@link WeatherConditionRule} 참고.
  *
  * <p><b>symptomStartDate — onsetPeriod → 날짜 환산 확정(2026-08-20, 기획 확정)</b>:
  * {@code Intake.onsetPeriod}(증상 시작 시기 4구간: TODAY/2~3일 전/1주 전/2주 이상)를 실제 날짜로
@@ -467,23 +465,41 @@ public class EpisodeAnalysisService {
 	}
 
 	/**
-	 * BLOCKED(threshold만, 2026-08-20 재확인 — 여전히 미확정) — Tracking raw 15일 조회와 CheckIn 정렬
-	 * ({@link WeatherObservationDay#align})은 실제로 연결했다. "일치" 판정 규칙 자체는 확정되어
-	 * {@link WeatherMatchRule}로 구현했지만(조건 충족+WORSE/SAME→일치, 조건 충족+IMPROVED→불일치, 조건
-	 * 미충족+IMPROVED→일치, 조건 미충족+SAME/WORSE→불일치), 그 입력인 conditionMet — temperature/
-	 * minTemperature/humidity/uvIndex 중 무엇을, 어떤 값으로 "날씨 조건 충족"으로 볼지 — 의 threshold가
-	 * Manyfast에 여전히 없어 matchedObservationCount/candidate 생성은 하지 않는다 — 임의로 추측해서 만들지
-	 * 않는다(사용자 지시). threshold가 오면 이 메서드 안에서 {@code alignedDays} 각 날짜의 conditionMet을
-	 * 계산하고 {@link WeatherMatchRule#matches}에 넘겨 candidate를 만들면 된다 — 나머지 파이프라인(강도/
-	 * ranking/confidence/HOLD)은 이미 {@link RuleBasedCauseAnalysisEngine}이 공통으로 처리한다.
+	 * threshold 확정(2026-08-21, {@link WeatherConditionRule} 참고) — 날짜별 conditionMet을 계산해
+	 * {@link WeatherMatchRule#matches}로 CheckIn과 일치 여부를 판정한다. CheckIn이 없는 날은 "일치 여부를
+	 * 판단할 수 없는 날"이라 {@link #loadSleepObservation}과 동일하게 관측 대상에서 제외한다(observationCount에도
+	 * 포함하지 않음). "전날 대비" 항목은 alignedDays를 날짜로 인덱싱해 하루 전 값을 찾아 계산한다 — 전날
+	 * raw 데이터가 없으면 그 항목만 미충족으로 본다({@link WeatherConditionRule} 참고). 나머지 파이프라인
+	 * (강도/ranking/confidence/HOLD)은 이미 {@link RuleBasedCauseAnalysisEngine}이 공통으로 처리하며 건드리지
+	 * 않았다.
 	 */
 	private ObservationCandidateInput loadWeatherObservation(Long accountId, LocalDate analysisDate) {
 		LocalDate from = analysisDate.minusDays(WEATHER_OBSERVATION_WINDOW_DAYS - 1);
 		List<TrackingQueryResponse> weatherRaw = trackingQueryService.findByPeriod(accountId, from, analysisDate);
 		Map<LocalDate, CheckInStatus> checkInStatuses = checkInService.findCheckInStatusesByAccountAndPeriod(accountId, from, analysisDate);
 		List<WeatherObservationDay> alignedDays = WeatherObservationDay.align(weatherRaw, checkInStatuses);
-		// threshold 확정 전까지는 alignedDays를 판정에 쓰지 않는다 — 계산만 준비해 두고 candidate는 만들지 않는다.
-		return null;
+		Map<LocalDate, WeatherObservationDay> byDate = alignedDays.stream()
+				.collect(Collectors.toMap(WeatherObservationDay::recordedDate, day -> day));
+
+		int observationCount = 0;
+		int matchedObservationCount = 0;
+
+		for (WeatherObservationDay day : alignedDays) {
+			if (!day.hasCheckIn()) {
+				continue;
+			}
+			WeatherObservationDay yesterday = byDate.get(day.recordedDate().minusDays(1));
+			boolean conditionMet = WeatherConditionRule.conditionMet(day, yesterday);
+			observationCount++;
+			if (WeatherMatchRule.matches(conditionMet, day.checkInStatus())) {
+				matchedObservationCount++;
+			}
+		}
+
+		if (observationCount == 0) {
+			return null;
+		}
+		return new ObservationCandidateInput(observationCount, matchedObservationCount, new RecordCoverage(observationCount));
 	}
 
 	private Episode requireOwnedEpisode(Long accountId, Long episodeId) {
