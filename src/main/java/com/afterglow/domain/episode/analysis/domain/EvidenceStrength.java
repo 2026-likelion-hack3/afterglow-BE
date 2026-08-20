@@ -9,5 +9,13 @@ package com.afterglow.domain.episode.analysis.domain;
 public enum EvidenceStrength {
 	STRONG,
 	MEDIUM,
-	WEAK
+	WEAK;
+
+	/** 추정된(정확하지 않은) 근거일 때 한 단계 낮춘다(강→중, 중→약) — WEAK는 그대로 WEAK(바닥, 2026-08-20 확정). */
+	public EvidenceStrength downgrade() {
+		return switch (this) {
+			case STRONG -> MEDIUM;
+			case MEDIUM, WEAK -> WEAK;
+		};
+	}
 }

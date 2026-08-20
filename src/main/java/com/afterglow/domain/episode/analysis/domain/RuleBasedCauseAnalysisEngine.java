@@ -1,6 +1,5 @@
 package com.afterglow.domain.episode.analysis.domain;
 
-import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -44,8 +43,8 @@ public final class RuleBasedCauseAnalysisEngine implements CauseAnalysisEngine {
 
 		collectProductCandidates(input, candidates, exclusions);
 		collectCombinationCandidates(input, candidates, exclusions);
-		collectObservationCandidate(CandidateType.SLEEP, input.sleep(), input.analysisDate(), candidates, exclusions);
-		collectObservationCandidate(CandidateType.WEATHER, input.weather(), input.analysisDate(), candidates, exclusions);
+		collectObservationCandidate(CandidateType.SLEEP, input.sleep(), candidates, exclusions);
+		collectObservationCandidate(CandidateType.WEATHER, input.weather(), candidates, exclusions);
 
 		List<CandidateResult> ranked = candidates.stream().sorted(RANKING_ORDER).toList();
 		return rank(ranked, exclusions);
@@ -54,10 +53,10 @@ public final class RuleBasedCauseAnalysisEngine implements CauseAnalysisEngine {
 	// ------------------------------------------------------------------
 	// candidate 수집 + 근거 강도
 	//
-	// "대상 없음 → NO_TARGET" 게이트는 4종 공통이다. 하지만 "7일 미만 → INSUFFICIENT_RECORDS" coverage
-	// 게이트는 SLEEP/WEATHER 전용이다 — Manyfast 통합 분석(F-ZSPZHH, updateData) [후보 수집] 규칙 원문:
-	// "일일 기록이 7일 미만이면 수면과 날씨를 제외하고 사유를 기록부족으로 남긴다"(2026-08-18 재확인).
-	// PRODUCT/COMBINATION은 대상이 있으면 coverage 검사 없이 바로 근거 강도를 계산한다.
+	// "대상 없음 → NO_TARGET" 게이트는 4종 공통이다. "기록 부족 → INSUFFICIENT_RECORDS" coverage 게이트도
+	// 4종 공통으로 "실제 분석 가능한 record/observation이 존재하는 날짜 수" 기준이다(2026-08-20 정정 —
+	// SLEEP/WEATHER도 원래는 calendar-day span이었으나 record 건수 기준으로 바뀌었다. 임계값 7 자체는
+	// 그대로다). PRODUCT/COMBINATION은 0이면 후보별로 개별 제외, SLEEP/WEATHER는 7 미만이면 제외.
 	// ------------------------------------------------------------------
 
 	private void collectProductCandidates(
@@ -67,19 +66,39 @@ public final class RuleBasedCauseAnalysisEngine implements CauseAnalysisEngine {
 			return;
 		}
 		for (ProductCandidateInput product : input.products()) {
+			if (product.coverageDays() == 0) {
+				exclusions.add(new CandidateExclusion(
+						CandidateType.PRODUCT, ExclusionReason.INSUFFICIENT_RECORDS, String.valueOf(product.productId())));
+				continue;
+			}
 			candidates.add(new CandidateResult(
 					CandidateType.PRODUCT,
 					productStrength(product),
 					new TimingEvidence(product.productId(), product.usageStartDate(), product.symptomStartDate()),
-					null));
+					product.coverageDays()));
 		}
+	}
+
+	/**
+	 * {@link ReferenceCertainty#FALLBACK}(개봉 시기 자체가 없어 등록일로 대체)이거나
+	 * {@code symptomStartDateReliable}이 false(증상 시작일을 신뢰할 수 없음 — onsetPeriod가 TODAY가
+	 * 아니라 실제 날짜 환산 규칙이 없는 상태, 2026-08-20 신설·후속 기획 확정 대기)면 timing 계산 없이
+	 * WEAK로 고정한다. 그 외(현재는 {@link ReferenceCertainty#ESTIMATED} 하나뿐 — Vanity가 정확한 사용
+	 * 시작일을 아직 주지 않는다)는 기존 timing 규칙으로 강도를 계산한 뒤 한 단계 downgrade한다(2026-08-20 확정).
+	 */
+	private EvidenceStrength productStrength(ProductCandidateInput product) {
+		if (product.referenceCertainty() == ReferenceCertainty.FALLBACK || !product.symptomStartDateReliable()) {
+			return EvidenceStrength.WEAK;
+		}
+		EvidenceStrength timingStrength = productTimingStrength(product);
+		return product.referenceCertainty() == ReferenceCertainty.ESTIMATED ? timingStrength.downgrade() : timingStrength;
 	}
 
 	/**
 	 * "product start가 symptom start보다 이전"이며 "14일 이내"를 [1, 14]일 전(양 끝 포함)으로 해석한다.
 	 * 사용 시작일과 증상 시작일이 같은 날이면 "이전"이 아니므로 timing 불일치로 본다.
 	 */
-	private EvidenceStrength productStrength(ProductCandidateInput product) {
+	private EvidenceStrength productTimingStrength(ProductCandidateInput product) {
 		long daysBeforeSymptom = ChronoUnit.DAYS.between(product.usageStartDate(), product.symptomStartDate());
 		boolean timingMatches = daysBeforeSymptom > 0 && daysBeforeSymptom <= PRODUCT_TIMING_WINDOW_DAYS;
 		if (!timingMatches) {
@@ -95,6 +114,11 @@ public final class RuleBasedCauseAnalysisEngine implements CauseAnalysisEngine {
 			return;
 		}
 		for (CombinationCandidateInput combo : input.combinations()) {
+			if (combo.coverageDays() == 0) {
+				exclusions.add(new CandidateExclusion(
+						CandidateType.COMBINATION, ExclusionReason.INSUFFICIENT_RECORDS, combo.tagA() + "+" + combo.tagB()));
+				continue;
+			}
 			EvidenceStrength strength = switch (combo.conflictPlacement()) {
 				case SAME_TIME_SLOT -> EvidenceStrength.STRONG;
 				case SPLIT_AM_PM -> EvidenceStrength.MEDIUM;
@@ -104,18 +128,18 @@ public final class RuleBasedCauseAnalysisEngine implements CauseAnalysisEngine {
 					CandidateType.COMBINATION,
 					strength,
 					new CombinationEvidence(combo.tagA(), combo.tagB(), combo.conflictPlacement()),
-					null));
+					combo.coverageDays()));
 		}
 	}
 
 	private void collectObservationCandidate(
-			CandidateType type, ObservationCandidateInput observation, LocalDate analysisDate,
+			CandidateType type, ObservationCandidateInput observation,
 			List<CandidateResult> candidates, List<CandidateExclusion> exclusions) {
 		if (observation == null) {
 			exclusions.add(new CandidateExclusion(type, ExclusionReason.NO_TARGET));
 			return;
 		}
-		if (!observation.coverage().meetsSevenDayGate(analysisDate)) {
+		if (!observation.coverage().meetsSevenDayGate()) {
 			exclusions.add(new CandidateExclusion(type, ExclusionReason.INSUFFICIENT_RECORDS));
 			return;
 		}
@@ -123,7 +147,7 @@ public final class RuleBasedCauseAnalysisEngine implements CauseAnalysisEngine {
 				type,
 				observationStrength(observation),
 				new FrequencyEvidence(observation.observationCount(), observation.matchedObservationCount()),
-				observation.coverage().coverageDays(analysisDate)));
+				observation.coverage().coverageDays()));
 	}
 
 	/**
