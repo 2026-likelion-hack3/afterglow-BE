@@ -7,9 +7,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-afterglow}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-afterglow}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${DB_PORT:-5433}:5432"
     volumes:
-      - afterglow-postgres-data:/var/lib/postgresql/data
+      - afterglow-postgres-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-afterglow} -d ${POSTGRES_DB:-afterglow}"]
       interval: 10s

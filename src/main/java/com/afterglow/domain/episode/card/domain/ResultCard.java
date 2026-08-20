@@ -1,0 +1,43 @@
+package com.afterglow.domain.episode.card.domain;
+
+import java.util.List;
+
+import com.afterglow.domain.episode.analysis.domain.CandidateType;
+import com.afterglow.domain.episode.analysis.domain.Evidence;
+
+/**
+ * 카드 한 장. Manyfast dataSpec의 "제목/대상 제품 또는 기준/이유 한 줄/근거 출처" 중, 실제 문장(제목,
+ * 이유 한 줄)은 만들지 않는다 — 제품명 등 렌더링에 필요한 데이터가 Vanity에 있어야 하는데 아직 연동이
+ * 없기 때문이다. 대신 문장을 조립할 수 있는 구조화된 근거(causeType/evidence/coverageDays, 기존
+ * Analysis 출력 재사용)만 담는다.
+ *
+ * @param type          이 카드의 역할
+ * @param causeType     이 카드가 참조하는 원인 후보 타입 — 후보를 참조하지 않는 카드(CONTINUE_USE,
+ *                      HOSPITAL_VISIT, WITHHELD)는 null
+ * @param evidence      원인 후보의 근거(기존 Analysis {@link Evidence} 재사용) — causeType이 null이면 null
+ * @param coverageDays  근거가 된 기록 일수("N일치 기록") — causeType이 null이면 null. causeType이
+ *                      PRODUCT/COMBINATION일 때도 null이다(coverage 게이트가 수면/날씨 전용이라 그
+ *                      두 타입은 애초에 coverageDays 자체가 없다, 2026-08-18) — 임의 숫자를 만들어
+ *                      채우지 않는다.
+ * @param continueUseProductIds CONTINUE_USE 카드가 보여줄 "오늘 사용할 것" 제품 id 목록(2026-08-20 신설)
+ *                      — 계정의 Vanity 보유 제품 전체에서, 이번 분석이 지목한 원인 제품(들)과 Routine에서
+ *                      이미 중단(STOP)된 제품을 뺀 목록이다({@code EpisodeAnalysisService}가 채운다,
+ *                      {@link ResultCardAssembler}는 여전히 관여하지 않는다). CONTINUE_USE가 아닌 카드는
+ *                      항상 빈 리스트.
+ */
+public record ResultCard(
+		ResultCardType type,
+		CandidateType causeType,
+		Evidence evidence,
+		Long coverageDays,
+		List<Long> continueUseProductIds
+) {
+	public ResultCard {
+		continueUseProductIds = continueUseProductIds == null ? List.of() : List.copyOf(continueUseProductIds);
+	}
+
+	/** {@link ResultCardAssembler}/영속화 재구성 등 CONTINUE_USE 제품 목록을 아직 모르는 곳에서 쓰는 기존 4-arg 생성자. */
+	public ResultCard(ResultCardType type, CandidateType causeType, Evidence evidence, Long coverageDays) {
+		this(type, causeType, evidence, coverageDays, List.of());
+	}
+}

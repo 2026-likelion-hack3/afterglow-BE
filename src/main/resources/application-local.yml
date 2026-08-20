@@ -1,11 +1,11 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/afterglow
+    url: jdbc:postgresql://localhost:${DB_PORT:5433}/afterglow
     username: ${DB_USERNAME:afterglow}
     password: ${DB_PASSWORD:afterglow}
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: true
 
 logging:
