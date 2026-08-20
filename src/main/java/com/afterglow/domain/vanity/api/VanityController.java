@@ -61,6 +61,20 @@ public class VanityController {
 		);
 	}
 
+	/**
+	 * 계정 전체 보유 제품 기준 조합 경고(2026-08-20) — 기존 {@code GET /api/vanity/products} shape를
+	 * 바꾸지 않기 위해 별도 endpoint로 뒀다. {@code /{productId}}보다 먼저 선언하지 않아도 Spring이
+	 * 리터럴 경로("warnings")를 path variable보다 우선 매칭한다.
+	 */
+	@GetMapping("/warnings")
+	public ResponseEntity<List<String>> getCombinationWarnings(
+		@AuthenticationPrincipal Long accountId) {
+
+		return ResponseEntity.ok(
+			vanityService.getCombinationWarnings(accountId)
+		);
+	}
+
 	@GetMapping("/{productId}")
 	public ResponseEntity<ProductResponse> getProduct(
 		@AuthenticationPrincipal Long accountId,
