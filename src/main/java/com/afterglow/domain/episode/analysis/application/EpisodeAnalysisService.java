@@ -3,6 +3,7 @@ package com.afterglow.domain.episode.analysis.application;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -13,8 +14,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.afterglow.domain.episode.analysis.domain.AnalysisInput;
 import com.afterglow.domain.episode.analysis.domain.AnalysisResult;
+import com.afterglow.domain.episode.analysis.domain.CandidateType;
 import com.afterglow.domain.episode.analysis.domain.CauseAnalysisEngine;
 import com.afterglow.domain.episode.analysis.domain.CombinationCandidateInput;
+import com.afterglow.domain.episode.analysis.domain.CombinationEvidence;
 import com.afterglow.domain.episode.analysis.domain.ConflictPlacement;
 import com.afterglow.domain.episode.analysis.domain.EpisodeAnalysisResult;
 import com.afterglow.domain.episode.analysis.domain.EpisodeAnalysisResultRepository;
@@ -23,8 +26,11 @@ import com.afterglow.domain.episode.analysis.domain.ProductCandidateInput;
 import com.afterglow.domain.episode.analysis.domain.ProductObservationWindow;
 import com.afterglow.domain.episode.analysis.domain.RecordCoverage;
 import com.afterglow.domain.episode.analysis.domain.RuleBasedCauseAnalysisEngine;
+import com.afterglow.domain.episode.analysis.domain.TimingEvidence;
+import com.afterglow.domain.episode.card.domain.ResultCard;
 import com.afterglow.domain.episode.card.domain.ResultCardAssembler;
 import com.afterglow.domain.episode.card.domain.ResultCardResult;
+import com.afterglow.domain.episode.card.domain.ResultCardType;
 import com.afterglow.domain.episode.checkin.application.CheckInService;
 import com.afterglow.domain.episode.checkin.domain.CheckInStatus;
 import com.afterglow.domain.episode.domain.Episode;
@@ -40,6 +46,7 @@ import com.afterglow.domain.tracking.daily.application.TrackingQueryResponse;
 import com.afterglow.domain.tracking.daily.application.TrackingQueryService;
 import com.afterglow.domain.tracking.daily.domain.SleepLevel;
 import com.afterglow.domain.vanity.CombinationRule;
+import com.afterglow.domain.vanity.InteractionTag;
 import com.afterglow.domain.vanity.UsageTiming;
 import com.afterglow.domain.vanity.application.VanityQueryResponse;
 import com.afterglow.domain.vanity.application.VanityQueryService;
@@ -105,7 +112,7 @@ public class EpisodeAnalysisService {
 		Episode episode = requireOwnedEpisode(accountId, episodeId);
 
 		if (episode.getStatus() == EpisodeStatus.ANALYZED) {
-			return loadExistingResult(episodeId, accountId);
+			return withContinueUseProducts(loadExistingResult(episodeId, accountId), accountId);
 		}
 		if (episode.getStatus() != EpisodeStatus.INTAKE_COMPLETED) {
 			throw new AfterglowException(ErrorCode.INVALID_EPISODE_STATE);
@@ -118,12 +125,122 @@ public class EpisodeAnalysisService {
 		episode.completeAnalysis();
 		episodeAnalysisResultRepository.save(EpisodeAnalysisResult.from(episodeId, accountId, resultCardResult));
 
-		return resultCardResult;
+		return withContinueUseProducts(resultCardResult, accountId);
 	}
 
 	public ResultCardResult getResult(Long accountId, Long episodeId) {
 		requireOwnedEpisode(accountId, episodeId);
-		return loadExistingResult(episodeId, accountId);
+		return withContinueUseProducts(loadExistingResult(episodeId, accountId), accountId);
+	}
+
+	/**
+	 * CONTINUE_USE("오늘 사용할 것") 카드에 실제 보유 제품 목록을 채운다(2026-08-20 RC1 hotfix).
+	 *
+	 * <p><b>RC1 CONTINUE_USE 정책(2026-08-20 제품 결정 — 기존 코드에서 발견한 규칙이 아니라 이번에
+	 * 새로 확정한 최소 deterministic 규칙, AI 추론 사용 안 함)</b>: Routine/Analysis 어디에도 "어떤
+	 * 보유 제품을 계속 써도 되는지" 판단하는 기존 로직이 없었다(조사 결과, Routine은 사용자가 고른 값을
+	 * 그대로 저장할 뿐 positive selection을 하지 않는다) — 그래서 "원인으로 지목되지 않은 나머지 전체"를
+	 * 보여주는 이전 구현(2026-08-20 초안)은 근거 없는 추천이었다. 대신 아래 좁은 규칙만 적용한다:
+	 * <ol>
+	 *   <li>Analysis가 HOLD면(사유 무관) 항상 빈 배열.</li>
+	 *   <li>HOLD가 아니어도 top 원인이 PRODUCT/COMBINATION이 아니면(SLEEP/WEATHER) 항상 빈 배열 —
+	 *       제품이 원인이 아니라는 것이 "이 제품들을 써도 된다"를 의미하지 않는다.</li>
+	 *   <li>그 외의 경우, 계정 Vanity 보유 제품 중 {@link InteractionTag#LOW_IRRITATION}이 명시적으로
+	 *       있고 RETINOL/ACID/VITAMIN_C/HIGH_CONCENTRATION이 전혀 없으며, 이번 분석의 원인 제품(들)이
+	 *       아니고, Routine 이력상 현재 중단 상태도 아닌 제품만 포함한다. 여러 개면 전부 반환하고(임의로
+	 *       하나를 고르지 않는다), 없으면 빈 배열이다 — 빈 배열은 오류가 아니다.</li>
+	 * </ol>
+	 * LOW_IRRITATION은 Product에 이미 명시적으로 저장된 태그만 신뢰한다 — OpenAI/OCR로 새로 추론하지
+	 * 않는다({@code InteractionTagMatcher}도 LOW_IRRITATION/HIGH_CONCENTRATION은 매칭 대상에서 제외돼
+	 * 있어, 이 태그는 사용자가 직접 입력했거나 애초에 없는 값이다).
+	 *
+	 * <p>{@link ResultCardAssembler}/{@link EpisodeAnalysisResult}는 건드리지 않고 응답 조립 시점에만
+	 * 후처리로 붙인다(영속화 안 함). deterministic Analysis 결과(hold/topCandidate/confidence/첫 번째
+	 * 카드) 자체는 전혀 바꾸지 않는다.
+	 */
+	private ResultCardResult withContinueUseProducts(ResultCardResult result, Long accountId) {
+		ResultCard firstCard = result.cards().get(0);
+		boolean eligibleForContinueUse = !result.hold()
+				&& (firstCard.causeType() == CandidateType.PRODUCT || firstCard.causeType() == CandidateType.COMBINATION);
+		if (!eligibleForContinueUse) {
+			return result;
+		}
+
+		List<VanityQueryResponse> products = vanityQueryService.findProductsByAccountId(accountId);
+		if (products.isEmpty()) {
+			return result;
+		}
+
+		Set<Long> causeProductIds = causeProductIds(firstCard, products);
+		List<Routine> routines = routineRepository.findByAccountIdOrderByStartDateAscIdAsc(accountId);
+
+		List<Long> continueUseProductIds = products.stream()
+				.filter(EpisodeAnalysisService::isLowIrritationEligible)
+				.filter(product -> !causeProductIds.contains(product.productId()))
+				.filter(product -> !isCurrentlyStopped(routines, product.productId()))
+				.map(VanityQueryResponse::productId)
+				.toList();
+
+		List<ResultCard> updatedCards = result.cards().stream()
+				.map(card -> card.type() == ResultCardType.CONTINUE_USE
+						? new ResultCard(card.type(), card.causeType(), card.evidence(), card.coverageDays(), continueUseProductIds)
+						: card)
+				.toList();
+
+		return ResultCardResult.determined(result.confidence(), updatedCards);
+	}
+
+	/** LOW_IRRITATION이 명시적으로 있고, RETINOL/ACID/VITAMIN_C/HIGH_CONCENTRATION은 전혀 없어야 한다(RC1 정책 4·5번). */
+	private static boolean isLowIrritationEligible(VanityQueryResponse product) {
+		Set<InteractionTag> tags = product.interactionTags();
+		if (!tags.contains(InteractionTag.LOW_IRRITATION)) {
+			return false;
+		}
+		return !tags.contains(InteractionTag.RETINOL)
+				&& !tags.contains(InteractionTag.ACID)
+				&& !tags.contains(InteractionTag.VITAMIN_C)
+				&& !tags.contains(InteractionTag.HIGH_CONCENTRATION);
+	}
+
+	private Set<Long> causeProductIds(ResultCard firstCard, List<VanityQueryResponse> products) {
+		if (firstCard.evidence() instanceof TimingEvidence timing) {
+			return Set.of(timing.productId());
+		}
+		if (firstCard.evidence() instanceof CombinationEvidence combo) {
+			return combinationProductIds(combo, products);
+		}
+		return Set.of();
+	}
+
+	/** 계정 Routine 이력상 이 제품의 가장 최근 사건이 DISCONTINUE면(재개로 이어지지 않았으면) 중단 상태로 본다. */
+	private boolean isCurrentlyStopped(List<Routine> routines, Long productId) {
+		List<ProductUsageEvent> events = routineProductLifecycle.historyOf(routines, productId);
+		if (events.isEmpty()) {
+			return false;
+		}
+		return events.get(events.size() - 1).usage() == RoutineItemUsage.DISCONTINUE;
+	}
+
+	/** CombinationEvidence의 태그 쌍을 실제로 가진 계정 제품 쌍을 찾는다 — {@link #collectCombinationCandidate}와 동일한 매칭 규칙. */
+	private Set<Long> combinationProductIds(CombinationEvidence combo, List<VanityQueryResponse> products) {
+		InteractionTag tagA = InteractionTag.valueOf(combo.tagA());
+		InteractionTag tagB = InteractionTag.valueOf(combo.tagB());
+		Set<Long> matched = new HashSet<>();
+		for (int i = 0; i < products.size(); i++) {
+			for (int j = i + 1; j < products.size(); j++) {
+				VanityQueryResponse first = products.get(i);
+				VanityQueryResponse second = products.get(j);
+				boolean firstHasA = first.interactionTags().contains(tagA);
+				boolean firstHasB = first.interactionTags().contains(tagB);
+				boolean secondHasA = second.interactionTags().contains(tagA);
+				boolean secondHasB = second.interactionTags().contains(tagB);
+				if ((firstHasA && secondHasB) || (firstHasB && secondHasA)) {
+					matched.add(first.productId());
+					matched.add(second.productId());
+				}
+			}
+		}
+		return matched;
 	}
 
 	private ResultCardResult loadExistingResult(Long episodeId, Long accountId) {

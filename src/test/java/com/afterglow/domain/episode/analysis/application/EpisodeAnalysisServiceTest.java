@@ -273,6 +273,202 @@ class EpisodeAnalysisServiceTest {
 	}
 
 	// ------------------------------------------------------------------
+	// CONTINUE_USE("오늘 사용할 것") 카드 — 2026-08-20 RC1 정책(LOW_IRRITATION 명시적 태그 기반)
+	// ------------------------------------------------------------------
+
+	@Test
+	void LOW_IRRITATION_태그가_있고_PRODUCT_원인이_아니면_CONTINUE_USE에_포함된다() {
+		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
+		LocalDate analysisDate = LocalDate.now();
+		Long causeProductId = saveProduct(accountId, OpeningPeriod.RECENT, UsageTiming.MORNING, Set.of()).getId();
+		Long lowIrritationProductId = saveProduct(accountId, null, UsageTiming.EVENING, Set.of(InteractionTag.LOW_IRRITATION)).getId();
+		saveCheckInOnAnyEpisode(accountId, analysisDate.minusDays(10));
+
+		Long episodeId = intakeCompletedEpisode(accountId);
+		ResultCardResult result = episodeAnalysisService.analyze(accountId, episodeId);
+
+		assertThat(result.hold()).isFalse();
+		assertThat(result.cards().get(0).causeType()).isEqualTo(com.afterglow.domain.episode.analysis.domain.CandidateType.PRODUCT);
+		List<Long> continueUseProductIds = result.cards().get(1).continueUseProductIds();
+		assertThat(continueUseProductIds).containsExactly(lowIrritationProductId);
+		assertThat(continueUseProductIds).doesNotContain(causeProductId);
+	}
+
+	@Test
+	void 원인_제품이면_LOW_IRRITATION_태그가_있어도_CONTINUE_USE에서_제외된다() {
+		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
+		LocalDate analysisDate = LocalDate.now();
+		Long causeProductId = saveProduct(accountId, OpeningPeriod.RECENT, UsageTiming.MORNING, Set.of(InteractionTag.LOW_IRRITATION)).getId();
+		saveCheckInOnAnyEpisode(accountId, analysisDate.minusDays(10));
+
+		Long episodeId = intakeCompletedEpisode(accountId);
+		ResultCardResult result = episodeAnalysisService.analyze(accountId, episodeId);
+
+		assertThat(result.hold()).isFalse();
+		assertThat(result.cards().get(1).continueUseProductIds()).doesNotContain(causeProductId);
+	}
+
+	@Test
+	void COMBINATION_원인이면_충돌_두_제품_모두_LOW_IRRITATION이어도_CONTINUE_USE에서_제외된다() {
+		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
+		LocalDate analysisDate = LocalDate.now();
+		combinationRuleRepository.save(CombinationRule.builder()
+				.tagA(InteractionTag.RETINOL).tagB(InteractionTag.ACID).minCount(2).warningMessage("주의").build());
+		Long retinolProductId = saveProduct(accountId, OpeningPeriod.SIX_MONTHS_OR_MORE, UsageTiming.MORNING,
+				Set.of(InteractionTag.RETINOL, InteractionTag.LOW_IRRITATION)).getId();
+		Long acidProductId = saveProduct(accountId, OpeningPeriod.SIX_MONTHS_OR_MORE, UsageTiming.MORNING,
+				Set.of(InteractionTag.ACID, InteractionTag.LOW_IRRITATION)).getId();
+		Long unrelatedLowIrritationProductId = saveProduct(accountId, null, UsageTiming.EVENING, Set.of(InteractionTag.LOW_IRRITATION)).getId();
+		saveCheckInOnAnyEpisode(accountId, analysisDate.minusDays(175));
+
+		Long episodeId = intakeCompletedEpisode(accountId);
+		ResultCardResult result = episodeAnalysisService.analyze(accountId, episodeId);
+
+		assertThat(result.hold()).isFalse();
+		assertThat(result.cards().get(0).causeType()).isEqualTo(com.afterglow.domain.episode.analysis.domain.CandidateType.COMBINATION);
+		List<Long> continueUseProductIds = result.cards().get(1).continueUseProductIds();
+		assertThat(continueUseProductIds).containsExactly(unrelatedLowIrritationProductId);
+		assertThat(continueUseProductIds).doesNotContain(retinolProductId, acidProductId);
+	}
+
+	@Test
+	void RETINOL_ACID_VITAMIN_C_HIGH_CONCENTRATION_태그가_있으면_LOW_IRRITATION이_있어도_제외된다() {
+		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
+		LocalDate analysisDate = LocalDate.now();
+		saveProduct(accountId, OpeningPeriod.RECENT, UsageTiming.MORNING, Set.of()); // PRODUCT top cause 확보용
+		Long retinolProductId = saveProduct(accountId, null, UsageTiming.EVENING, Set.of(InteractionTag.LOW_IRRITATION, InteractionTag.RETINOL)).getId();
+		Long acidProductId = saveProduct(accountId, null, UsageTiming.EVENING, Set.of(InteractionTag.LOW_IRRITATION, InteractionTag.ACID)).getId();
+		Long vitaminCProductId = saveProduct(accountId, null, UsageTiming.EVENING, Set.of(InteractionTag.LOW_IRRITATION, InteractionTag.VITAMIN_C)).getId();
+		Long highConcentrationProductId = saveProduct(accountId, null, UsageTiming.EVENING, Set.of(InteractionTag.LOW_IRRITATION, InteractionTag.HIGH_CONCENTRATION)).getId();
+		Long cleanLowIrritationProductId = saveProduct(accountId, null, UsageTiming.EVENING, Set.of(InteractionTag.LOW_IRRITATION)).getId();
+		saveCheckInOnAnyEpisode(accountId, analysisDate.minusDays(10));
+
+		Long episodeId = intakeCompletedEpisode(accountId);
+		ResultCardResult result = episodeAnalysisService.analyze(accountId, episodeId);
+
+		assertThat(result.hold()).isFalse();
+		List<Long> continueUseProductIds = result.cards().get(1).continueUseProductIds();
+		assertThat(continueUseProductIds).containsExactly(cleanLowIrritationProductId);
+		assertThat(continueUseProductIds).doesNotContain(retinolProductId, acidProductId, vitaminCProductId, highConcentrationProductId);
+	}
+
+	@Test
+	void Routine_STOP_상태인_제품은_LOW_IRRITATION이어도_CONTINUE_USE에서_제외된다() {
+		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
+		LocalDate analysisDate = LocalDate.now();
+		saveProduct(accountId, OpeningPeriod.RECENT, UsageTiming.MORNING, Set.of()); // PRODUCT top cause 확보용
+		Long stoppedProductId = saveProduct(accountId, null, UsageTiming.EVENING, Set.of(InteractionTag.LOW_IRRITATION)).getId();
+		Long normalProductId = saveProduct(accountId, null, UsageTiming.EVENING, Set.of(InteractionTag.LOW_IRRITATION)).getId();
+		saveCheckInOnAnyEpisode(accountId, analysisDate.minusDays(10));
+
+		Long discontinueEpisodeId = episodeRepository.save(Episode.create(accountId, symptom())).getId();
+		routineRepository.save(Routine.create(discontinueEpisodeId, accountId, LocalDate.now().minusDays(30),
+				List.of(RoutineItem.discontinueItem(stoppedProductId))));
+
+		Long episodeId = intakeCompletedEpisode(accountId);
+		ResultCardResult result = episodeAnalysisService.analyze(accountId, episodeId);
+
+		List<Long> continueUseProductIds = result.cards().get(1).continueUseProductIds();
+		assertThat(continueUseProductIds).containsExactly(normalProductId);
+		assertThat(continueUseProductIds).doesNotContain(stoppedProductId);
+	}
+
+	@Test
+	void 중단_후_재개된_LOW_IRRITATION_제품은_다시_CONTINUE_USE에_포함된다() {
+		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
+		LocalDate analysisDate = LocalDate.now();
+		saveProduct(accountId, OpeningPeriod.RECENT, UsageTiming.MORNING, Set.of()); // PRODUCT top cause 확보용
+		Long resumedProductId = saveProduct(accountId, null, UsageTiming.EVENING, Set.of(InteractionTag.LOW_IRRITATION)).getId();
+		saveCheckInOnAnyEpisode(accountId, analysisDate.minusDays(10));
+
+		Long discontinueEpisodeId = episodeRepository.save(Episode.create(accountId, symptom())).getId();
+		routineRepository.save(Routine.create(discontinueEpisodeId, accountId, LocalDate.now().minusDays(30),
+				List.of(RoutineItem.discontinueItem(resumedProductId))));
+		Long resumeEpisodeId = episodeRepository.save(Episode.create(accountId, symptom())).getId();
+		routineRepository.save(Routine.create(resumeEpisodeId, accountId, LocalDate.now().minusDays(20),
+				List.of(RoutineItem.continueItem(1, RoutineTimeSlot.MORNING, resumedProductId))));
+
+		Long episodeId = intakeCompletedEpisode(accountId);
+		ResultCardResult result = episodeAnalysisService.analyze(accountId, episodeId);
+
+		assertThat(result.cards().get(1).continueUseProductIds()).contains(resumedProductId);
+	}
+
+	@Test
+	void HOLD_상태면_CONTINUE_USE는_빈_배열이다() {
+		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
+		saveProduct(accountId, OpeningPeriod.RECENT, UsageTiming.MORNING, Set.of(InteractionTag.LOW_IRRITATION));
+		// CheckIn을 전혀 만들지 않아 coverage 0 → INSUFFICIENT_RECORDS → HOLD.
+
+		Long episodeId = intakeCompletedEpisode(accountId);
+		ResultCardResult result = episodeAnalysisService.analyze(accountId, episodeId);
+
+		assertThat(result.hold()).isTrue();
+		assertThat(result.cards().get(1).continueUseProductIds()).isEmpty();
+	}
+
+	@Test
+	void SLEEP_원인이면_LOW_IRRITATION_제품이_있어도_CONTINUE_USE는_빈_배열이다() {
+		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
+		LocalDate analysisDate = LocalDate.now();
+		saveProduct(accountId, null, UsageTiming.MORNING, Set.of(InteractionTag.LOW_IRRITATION));
+		for (long i = 0; i < 7; i++) {
+			LocalDate date = analysisDate.minusDays(i);
+			saveDailyTracking(accountId, date, SleepLevel.WELL);
+			saveCheckInOnAnyEpisode(accountId, date, CheckInStatus.IMPROVED);
+		}
+
+		Long episodeId = intakeCompletedEpisode(accountId);
+		ResultCardResult result = episodeAnalysisService.analyze(accountId, episodeId);
+
+		assertThat(result.hold()).isFalse();
+		assertThat(result.cards().get(0).causeType()).isEqualTo(com.afterglow.domain.episode.analysis.domain.CandidateType.SLEEP);
+		assertThat(result.cards().get(1).continueUseProductIds()).isEmpty();
+	}
+
+	@Test
+	void Vanity_제품이_전혀_없으면_CONTINUE_USE는_빈_배열이다() {
+		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
+
+		Long episodeId = intakeCompletedEpisode(accountId);
+		ResultCardResult result = episodeAnalysisService.analyze(accountId, episodeId);
+
+		assertThat(result.cards().get(1).continueUseProductIds()).isEmpty();
+	}
+
+	@Test
+	void LOW_IRRITATION_태그를_가진_제품이_없으면_CONTINUE_USE는_빈_배열이다() {
+		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
+		LocalDate analysisDate = LocalDate.now();
+		saveProduct(accountId, OpeningPeriod.RECENT, UsageTiming.MORNING, Set.of());
+		saveProduct(accountId, null, UsageTiming.EVENING, Set.of());
+		saveCheckInOnAnyEpisode(accountId, analysisDate.minusDays(10));
+
+		Long episodeId = intakeCompletedEpisode(accountId);
+		ResultCardResult result = episodeAnalysisService.analyze(accountId, episodeId);
+
+		assertThat(result.hold()).isFalse();
+		assertThat(result.cards().get(1).continueUseProductIds()).isEmpty();
+	}
+
+	@Test
+	void 다시_조회해도_CONTINUE_USE_목록은_동일한_규칙으로_일관되게_계산된다() {
+		Long accountId = accountRepository.save(Account.createAnonymous()).getId();
+		LocalDate analysisDate = LocalDate.now();
+		saveProduct(accountId, OpeningPeriod.RECENT, UsageTiming.MORNING, Set.of());
+		Long lowIrritationProductId = saveProduct(accountId, null, UsageTiming.EVENING, Set.of(InteractionTag.LOW_IRRITATION)).getId();
+		saveCheckInOnAnyEpisode(accountId, analysisDate.minusDays(10));
+
+		Long episodeId = intakeCompletedEpisode(accountId);
+		ResultCardResult analyzed = episodeAnalysisService.analyze(accountId, episodeId);
+		ResultCardResult fetched = episodeAnalysisService.getResult(accountId, episodeId);
+
+		assertThat(fetched.cards().get(1).continueUseProductIds())
+				.containsExactly(lowIrritationProductId)
+				.isEqualTo(analyzed.cards().get(1).continueUseProductIds());
+	}
+
+	// ------------------------------------------------------------------
 	// Sleep 실제 연동
 	// ------------------------------------------------------------------
 
