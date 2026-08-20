@@ -1,0 +1,2 @@
+ALTER TABLE story
+    ALTER COLUMN life_stage DROP NOT NULL;
